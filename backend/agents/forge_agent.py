@@ -16,19 +16,16 @@ class ForgeAPI:
     
     def __init__(self, base_url: str):
         self.base_url = base_url
-        self.session: Optional[aiohttp.ClientSession] = None
     
     async def _request(self, method: str, path: str, **kwargs) -> Dict[str, Any]:
-        """Make an HTTP request."""
-        if not self.session:
-            self.session = aiohttp.ClientSession()
-        
-        url = f"{self.base_url}{path}"
-        async with self.session.request(method, url, **kwargs) as response:
-            if response.status >= 400:
-                text = await response.text()
-                raise Exception(f"API error {response.status}: {text}")
-            return await response.json()
+        """Make an HTTP request with fresh session."""
+        async with aiohttp.ClientSession() as session:
+            url = f"{self.base_url}{path}"
+            async with session.request(method, url, **kwargs) as response:
+                if response.status >= 400:
+                    text = await response.text()
+                    raise Exception(f"API error {response.status}: {text}")
+                return await response.json()
     
     async def get_global_best(self, template_id: str) -> Optional[GlobalBestState]:
         """Get current global best."""
@@ -58,8 +55,6 @@ class ForgeAPI:
     ) -> Optional[str]:
         """Claim an experiment."""
         try:
-            if not self.session:
-                self.session = aiohttp.ClientSession()
             url = f"{self.base_url}/experiments/claim"
             params = {
                 "agent_id": agent_id,
@@ -68,13 +63,14 @@ class ForgeAPI:
                 "hypothesis": hypothesis,
                 "mutation": mutation,
             }
-            async with self.session.post(url, params=params) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    if data.get("success"):
-                        return data.get("experiment_id")
-                else:
-                    print(f"Claim failed with status {response.status}: {await response.text()}")
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, params=params) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        if data.get("success"):
+                            return data.get("experiment_id")
+                    else:
+                        print(f"Claim failed with status {response.status}: {await response.text()}")
             return None
         except Exception as e:
             print(f"Failed to claim experiment: {e}")
@@ -101,12 +97,11 @@ class ForgeAPI:
                 "status": status,
                 "reasoning": reasoning,
             }
-            if not self.session:
-                self.session = aiohttp.ClientSession()
             url = f"{self.base_url}/experiments/publish"
-            async with self.session.post(url, json=payload) as response:
-                if response.status == 200:
-                    return True
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, json=payload) as response:
+                    if response.status == 200:
+                        return True
             return False
         except Exception as e:
             print(f"Failed to publish result: {e}")
@@ -127,11 +122,10 @@ class ForgeAPI:
             if hypothesis:
                 payload["hypothesis"] = hypothesis
             
-            if not self.session:
-                self.session = aiohttp.ClientSession()
             url = f"{self.base_url}/agents/update-status"
-            async with self.session.post(url, json=payload) as response:
-                return response.status == 200
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, json=payload) as response:
+                    return response.status == 200
         except Exception as e:
             print(f"Failed to update status: {e}")
             return False
@@ -147,8 +141,8 @@ class ForgeAPI:
                 "improvements_found": 0,
                 "last_active": datetime.now().isoformat(),
             }
-            async with self.session or aiohttp.ClientSession() as session:
-                url = f"{self.base_url}/agents/register"
+            url = f"{self.base_url}/agents/register"
+            async with aiohttp.ClientSession() as session:
                 async with session.post(url, json=payload) as response:
                     return response.status == 200
         except Exception as e:
@@ -158,8 +152,8 @@ class ForgeAPI:
     async def update_global_best(self, template_id: str, config: dict) -> bool:
         """Update the global best config after successful experiment."""
         try:
-            async with self.session or aiohttp.ClientSession() as session:
-                url = f"{self.base_url}/experiments/global-best/{template_id}"
+            url = f"{self.base_url}/experiments/global-best/{template_id}"
+            async with aiohttp.ClientSession() as session:
                 async with session.post(url, json=config) as response:
                     return response.status == 200
         except Exception as e:
@@ -167,10 +161,8 @@ class ForgeAPI:
             return False
     
     async def close(self):
-        """Close the session."""
-        if self.session:
-            await self.session.close()
-            self.session = None
+        """Close is now a no-op since we create fresh sessions."""
+        pass
 
 
 class ForgeAgent(BaseForgeAgent):
@@ -345,7 +337,8 @@ class ForgeAgent(BaseForgeAgent):
                 break
             
             # Plateau detection - but don't stop if we're still finding improvements
-            if consecutive_failures >= plateau_patience:
+            # Only count consecutive failures AFTER at least one successful experiment
+            if consecutive_failures >= plateau_patience and experiment_count > 0:
                 print(f"[{self.agent_name}] Plateau detected! No improvement in {plateau_patience} attempts.")
                 print(f"[{self.agent_name}] Total: {experiment_count} experiments, {improvements_found} improvements found.")
                 print(f"[{self.agent_name}] Best: {baseline_metric:.2f} → {initial_best.metric if initial_best else 0:.2f}")
@@ -357,7 +350,11 @@ class ForgeAgent(BaseForgeAgent):
             try:
                 # Get best before experiment
                 best_before = await self.get_global_best(self.config.template_id)
-                metric_before = best_before.metric if best_before else 0
+                if not best_before:
+                    print(f"[{self.agent_name}] Warning: Could not get global best, retrying...")
+                    await asyncio.sleep(2)
+                    continue  # Skip this iteration, don't count as failure
+                metric_before = best_before.metric
                 
                 # Run experiment
                 success = await self.run_single_experiment(self.config.template_id)
@@ -367,17 +364,20 @@ class ForgeAgent(BaseForgeAgent):
                     
                     # Check if this was an improvement
                     best_after = await self.get_global_best(self.config.template_id)
-                    metric_after = best_after.metric if best_after else 0
-                    
-                    if metric_after > metric_before + improvement_threshold:
-                        improvements_found += 1
-                        consecutive_failures = 0  # Reset on improvement
-                        print(f"[{self.agent_name}] Improvement! {metric_before:.2f} → {metric_after:.2f} (+{((metric_after - metric_before) / metric_before * 100):.1f}%)")
-                    else:
-                        consecutive_failures += 1
-                        print(f"[{self.agent_name}] No improvement ({consecutive_failures}/{plateau_patience} failures)")
+                    if best_after:
+                        metric_after = best_after.metric
+                        
+                        if metric_after > metric_before + improvement_threshold:
+                            improvements_found += 1
+                            consecutive_failures = 0  # Reset on improvement
+                            print(f"[{self.agent_name}] Improvement! {metric_before:.2f} → {metric_after:.2f} (+{((metric_after - metric_before) / metric_before * 100):.1f}%)")
+                        else:
+                            consecutive_failures += 1
+                            print(f"[{self.agent_name}] No improvement ({consecutive_failures}/{plateau_patience} failures)")
                 else:
-                    consecutive_failures += 1
+                    # Failed experiment - don't count toward plateau unless we've done at least 1 successful
+                    if experiment_count > 0:
+                        consecutive_failures += 1
                 
                 # Wait before next experiment
                 print(f"[{self.agent_name}] Waiting {self.config.experiment_delay}s...")
@@ -388,7 +388,9 @@ class ForgeAgent(BaseForgeAgent):
                 break
             except Exception as e:
                 print(f"[{self.agent_name}] Error: {e}")
-                consecutive_failures += 1
+                # Only count as failure if we've done at least 1 experiment
+                if experiment_count > 0:
+                    consecutive_failures += 1
                 await asyncio.sleep(self.config.retry_delay)
         
         await self.api.close()
