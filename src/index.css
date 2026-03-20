@@ -1,0 +1,157 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --cream: #FAFAFA;
+  --warm-50: #F5F5F5;
+  --warm-100: #EAEAEA;
+  --copper: #E58726;
+  --copper-light: #F4A253;
+  --copper-dark: #A5621C;
+  --ink: #111111;
+  --ink-70: rgba(17, 17, 17, 0.7);
+  --ink-40: rgba(17, 17, 17, 0.4);
+  --ink-15: rgba(17, 17, 17, 0.15);
+  --ink-08: rgba(17, 17, 17, 0.08);
+  --green: #0070F3;
+  /* Swapped to a Vercel-like blue but kept var name for compatibility, wait no, let's keep it a sleek green */
+  --green: #10B981;
+  --green-bg: rgba(16, 185, 129, 0.08);
+  --red: #EF4444;
+  --red-bg: rgba(239, 68, 68, 0.08);
+  --purple: #8B5CF6;
+  --purple-bg: rgba(139, 92, 246, 0.08);
+
+  color-scheme: light;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+body {
+  margin: 0;
+  background-color: var(--cream);
+  color: var(--ink);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+/* Ambient Effects */
+.page {
+  position: relative;
+  min-height: 100vh;
+  overflow: hidden;
+  background-color: var(--cream);
+}
+
+.page::before {
+  content: '';
+  position: absolute;
+  top: -20%;
+  right: -10%;
+  width: 60vw;
+  height: 60vw;
+  background: radial-gradient(circle, rgba(196, 138, 74, 0.08) 0%, transparent 60%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.page::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(196, 138, 74, 0.2), transparent);
+  animation: pagePulse 4s ease-in-out infinite;
+  z-index: 10;
+}
+
+@keyframes pagePulse {
+  0% {
+    opacity: 0.3;
+  }
+
+  50% {
+    opacity: 0.8;
+  }
+
+  100% {
+    opacity: 0.3;
+  }
+}
+
+/* Animations */
+@keyframes fadeUp {
+  0% {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-up {
+  animation: fadeUp 0.8s ease-out forwards;
+}
+
+@keyframes drawCurve {
+  0% {
+    stroke-dashoffset: 900;
+  }
+
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+
+.animate-draw-curve {
+  stroke-dasharray: 900;
+  animation: drawCurve 2.5s ease-out forwards;
+}
+
+@keyframes agentPulse {
+  0% {
+    opacity: 0.6;
+  }
+
+  50% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0.6;
+  }
+}
+
+.animate-agent-pulse {
+  animation: agentPulse 2s ease-in-out infinite;
+}
+
+/* Base custom scrollbar */
+.scrollbar-thin::-webkit-scrollbar {
+  width: 4px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: var(--ink-15);
+  border-radius: 2px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background: var(--copper);
+}
