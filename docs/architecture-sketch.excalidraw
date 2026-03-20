@@ -1,0 +1,182 @@
+{
+  "type": "excalidraw",
+  "version": 2,
+  "source": "https://excalidraw.com",
+  "elements": [
+    {
+      "type": "rectangle",
+      "version": 1,
+      "versionNonce": 1,
+      "isDeleted": false,
+      "id": "top",
+      "fill": "#fff",
+      "stroke": "#000",
+      "strokeWidth": 2,
+      "width": 180,
+      "height": 50,
+      "x": 60,
+      "y": 20,
+      "label": "User Goal Specification"
+    },
+    {
+      "type": "rectangle",
+      "version": 1,
+      "versionNonce": 2,
+      "isDeleted": false,
+      "id": "data",
+      "fill": "#fff",
+      "stroke": "#000",
+      "strokeWidth": 2,
+      "width": 180,
+      "height": 50,
+      "x": 60,
+      "y": 90,
+      "label": "Data Ingestion Layer"
+    },
+    {
+      "type": "rectangle",
+      "version": 1,
+      "versionNonce": 3,
+      "isDeleted": false,
+      "id": "context",
+      "fill": "#fff",
+      "stroke": "#000",
+      "strokeWidth": 2,
+      "width": 180,
+      "height": 50,
+      "x": 60,
+      "y": 160,
+      "label": "Context Engine"
+    },
+    {
+      "type": "rectangle",
+      "version": 1,
+      "versionNonce": 4,
+      "isDeleted": false,
+      "id": "opt",
+      "fill": "#fff",
+      "stroke": "#000",
+      "strokeWidth": 2,
+      "width": 240,
+      "height": 80,
+      "x": 30,
+      "y": 250,
+      "label": "Multi-Objective Optimization Engine"
+    },
+    {
+      "type": "rectangle",
+      "version": 1,
+      "versionNonce": 5,
+      "isDeleted": false,
+      "id": "eval",
+      "fill": "#fff",
+      "stroke": "#000",
+      "strokeWidth": 2,
+      "width": 260,
+      "height": 70,
+      "x": 310,
+      "y": 250,
+      "label": "Hybrid Evaluation Framework"
+    },
+    {
+      "type": "rectangle",
+      "version": 1,
+      "versionNonce": 6,
+      "isDeleted": false,
+      "id": "output",
+      "fill": "#fff",
+      "stroke": "#000",
+      "strokeWidth": 2,
+      "width": 180,
+      "height": 50,
+      "x": 100,
+      "y": 360,
+      "label": "Explainable Output"
+    },
+    {
+      "type": "arrow",
+      "version": 1,
+      "versionNonce": 7,
+      "isDeleted": false,
+      "points": [[130, 70], [130, 90]]
+    },
+    {
+      "type": "arrow",
+      "version": 1,
+      "versionNonce": 8,
+      "isDeleted": false,
+      "points": [[130, 140], [130, 160]]
+    },
+    {
+      "type": "arrow",
+      "version": 1,
+      "versionNonce": 9,
+      "isDeleted": false,
+      "points": [[130, 210], [110, 250]]
+    },
+    {
+      "type": "arrow",
+      "version": 1,
+      "versionNonce": 10,
+      "isDeleted": false,
+      "points": [[220, 210], [310, 250]]
+    },
+    {
+      "type": "arrow",
+      "version": 1,
+      "versionNonce": 11,
+      "isDeleted": false,
+      "points": [[150, 330], [150, 360]]
+    },
+    {
+      "type": "text",
+      "version": 1,
+      "versionNonce": 12,
+      "isDeleted": false,
+      "id": "label1",
+      "x": 240,
+      "y": 30,
+      "text": "USER DEFINES: objectives, constraints, success criteria"
+    },
+    {
+      "type": "text",
+      "version": 1,
+      "versionNonce": 13,
+      "isDeleted": false,
+      "id": "label2",
+      "x": 260,
+      "y": 100,
+      "text": "Import actual data: Excel, CSV, APIs"
+    },
+    {
+      "type": "text",
+      "version": 1,
+      "versionNonce": 14,
+      "isDeleted": false,
+      "id": "label3",
+      "x": 260,
+      "y": 170,
+      "text": "Industry, company, user-type detection"
+    },
+    {
+      "type": "text",
+      "version": 1,
+      "versionNonce": 15,
+      "isDeleted": false,
+      "id": "label4",
+      "x": 20,
+      "y": 340,
+      "text": "Multi-objective: Pareto frontier, not single metric"
+    },
+    {
+      "type": "text",
+      "version": 1,
+      "versionNonce": 16,
+      "isDeleted": false,
+      "id": "label5",
+      "x": 320,
+      "y": 340,
+      "text": "Quantitative + Qualitative (LLM-as-judge)"
+    }
+  ]
+}
