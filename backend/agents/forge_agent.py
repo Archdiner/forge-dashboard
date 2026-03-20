@@ -235,6 +235,47 @@ class ForgeAgent(BaseForgeAgent):
     async def update_status(self, status: str, hypothesis: Optional[str] = None) -> None:
         await self.api.update_agent_status(self.agent_id, status, hypothesis)
     
+    async def _send_checkpoint_notification(self, experiment_count: int, improvements_found: int) -> None:
+        """Send checkpoint notification via WebSocket."""
+        try:
+            from store import store
+            from main import broadcast_to_websockets
+            
+            project_id = getattr(self.config, 'project_id', '')
+            best = await self.get_global_best(self.config.template_id)
+            
+            # Set checkpoint in store
+            store.set_checkpoint(project_id, f"Checkpoint at {experiment_count} experiments")
+            
+            # Get recent experiments
+            history = await self.get_history(self.config.template_id, limit=5)
+            
+            # Broadcast checkpoint event
+            await broadcast_to_websockets({
+                "type": "checkpoint",
+                "project_id": project_id,
+                "agent_id": self.agent_id,
+                "experiment_count": experiment_count,
+                "improvements_found": improvements_found,
+                "current_best": {
+                    "metric": best.metric if best else 0,
+                    "config": best.config if best else {}
+                } if best else None,
+                "recent_experiments": [
+                    {
+                        "id": e.id,
+                        "hypothesis": e.hypothesis[:100] if e.hypothesis else "",
+                        "metric_before": e.metric_before,
+                        "metric_after": e.metric_after,
+                        "status": str(e.status)
+                    }
+                    for e in history
+                ],
+                "message": f"Checkpoint reached after {experiment_count} experiments. Current best: {best.metric if best else 0:.2f}"
+            })
+        except Exception as e:
+            print(f"[{self.agent_name}] Failed to send checkpoint notification: {e}")
+    
     async def run_single_experiment(self, template_id: str) -> bool:
         """Run a single experiment cycle."""
         print(f"\n[{self.agent_name}] Starting experiment...")
@@ -378,6 +419,27 @@ class ForgeAgent(BaseForgeAgent):
                     # Failed experiment - don't count toward plateau unless we've done at least 1 successful
                     if experiment_count > 0:
                         consecutive_failures += 1
+                
+                # Checkpoint logic: pause every N experiments
+                checkpoint_every = getattr(self.config, 'checkpoint_every', 10)
+                if checkpoint_every > 0 and experiment_count > 0 and experiment_count % checkpoint_every == 0:
+                    # Send checkpoint notification
+                    await self._send_checkpoint_notification(experiment_count, improvements_found)
+                    
+                    # Wait for user response (polling checkpoint state)
+                    print(f"[{self.agent_name}] CHECKPOINT: Paused after {experiment_count} experiments. Waiting for user...")
+                    project_id = getattr(self.config, 'project_id', '')
+                    for _ in range(60):  # Wait up to 60 seconds for user response
+                        await asyncio.sleep(1)
+                        if project_id:
+                            # Check if checkpoint is cleared (user continued)
+                            from store import store
+                            if not store.is_at_checkpoint(project_id):
+                                print(f"[{self.agent_name}] CHECKPOINT: Resuming optimization...")
+                                break
+                    else:
+                        # Timeout - continue anyway
+                        print(f"[{self.agent_name}] CHECKPOINT: Timeout, resuming...")
                 
                 # Wait before next experiment
                 print(f"[{self.agent_name}] Waiting {self.config.experiment_delay}s...")

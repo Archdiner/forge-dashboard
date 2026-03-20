@@ -477,6 +477,94 @@ export default function ProjectDetails() {
         templateId={templateId}
       />
 
+      {store.checkpointState?.atCheckpoint && (
+        <div style={{
+          background: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)',
+          border: '1px solid #f59e0b',
+          borderRadius: 12,
+          padding: 20,
+          marginBottom: 24,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: '#92400e', marginBottom: 4 }}>
+                ⏸️ Checkpoint Reached
+              </div>
+              <div style={{ fontSize: 13, color: '#b45309' }}>
+                {store.checkpointState.message}
+              </div>
+              <div style={{ fontSize: 12, color: '#92400e', marginTop: 8 }}>
+                Current best: <strong style={{ fontFamily: mono }}>{store.checkpointState.currentBest?.metric.toFixed(2) ?? '—'}</strong>
+                {' '} | Experiments: <strong>{store.checkpointState.experimentCount}</strong>
+                {' '} | Improvements: <strong>{store.checkpointState.improvementsFound}</strong>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                onClick={() => store.redirectOptimization('more_urgent')}
+                style={{
+                  padding: '8px 16px',
+                  fontSize: 13,
+                  fontWeight: 500,
+                  background: '#fef3c7',
+                  color: '#92400e',
+                  border: '1px solid #f59e0b',
+                  borderRadius: 6,
+                  cursor: 'pointer',
+                }}
+              >
+                Try More Urgent
+              </button>
+              <button
+                onClick={() => store.redirectOptimization('more_persuasive')}
+                style={{
+                  padding: '8px 16px',
+                  fontSize: 13,
+                  fontWeight: 500,
+                  background: '#fef3c7',
+                  color: '#92400e',
+                  border: '1px solid #f59e0b',
+                  borderRadius: 6,
+                  cursor: 'pointer',
+                }}
+              >
+                Try More Persuasive
+              </button>
+              <button
+                onClick={() => store.continueOptimization()}
+                style={{
+                  padding: '8px 20px',
+                  fontSize: 13,
+                  fontWeight: 600,
+                  background: '#10b981',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: 6,
+                  cursor: 'pointer',
+                }}
+              >
+                Continue
+              </button>
+              <button
+                onClick={() => store.stopOptimization()}
+                style={{
+                  padding: '8px 16px',
+                  fontSize: 13,
+                  fontWeight: 500,
+                  background: '#fff',
+                  color: '#92400e',
+                  border: '1px solid #f59e0b',
+                  borderRadius: 6,
+                  cursor: 'pointer',
+                }}
+              >
+                Stop
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <StatsRow
         best={store.globalBest}
         experimentCount={store.experimentCount}

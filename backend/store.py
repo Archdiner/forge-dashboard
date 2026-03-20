@@ -20,6 +20,9 @@ class InMemoryStore:
         self.projects: Dict[str, Project] = {}
         self.dedup_hashes: set = set()
         
+        # Checkpoint state: project_id -> { paused: bool, at_checkpoint: bool, message: str }
+        self.checkpoint_state: Dict[str, dict] = {}
+        
         self._init_default_data()
     
     def _init_default_data(self):
@@ -234,6 +237,31 @@ class InMemoryStore:
             if hypothesis:
                 self.agents[agent_id].current_hypothesis = hypothesis
             self.agents[agent_id].last_active = datetime.now()
+
+    # Checkpoint management
+    def set_checkpoint(self, project_id: str, message: str = "Checkpoint reached"):
+        """Pause agent at checkpoint."""
+        self.checkpoint_state[project_id] = {
+            "paused": True,
+            "at_checkpoint": True,
+            "message": message,
+            "timestamp": datetime.now().isoformat()
+        }
+    
+    def clear_checkpoint(self, project_id: str):
+        """Clear checkpoint and resume."""
+        if project_id in self.checkpoint_state:
+            self.checkpoint_state[project_id]["paused"] = False
+            self.checkpoint_state[project_id]["at_checkpoint"] = False
+    
+    def is_at_checkpoint(self, project_id: str) -> bool:
+        """Check if project is at a checkpoint."""
+        state = self.checkpoint_state.get(project_id, {})
+        return state.get("at_checkpoint", False) and state.get("paused", False)
+    
+    def get_checkpoint_state(self, project_id: str) -> dict:
+        """Get checkpoint state for a project."""
+        return self.checkpoint_state.get(project_id, {"paused": False, "at_checkpoint": False})
 
 
 store = InMemoryStore()

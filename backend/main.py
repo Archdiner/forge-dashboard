@@ -29,7 +29,7 @@ app.add_middleware(
 active_websockets: Set[WebSocket] = set()
 
 
-async def broadcast_to_websockets(data: dict):
+async def broadcast_to_websockets(data):
     """Broadcast a message to all connected WebSocket clients."""
     from datetime import datetime
     
@@ -39,7 +39,7 @@ async def broadcast_to_websockets(data: dict):
         elif hasattr(val, 'model_dump'):
             return convert_value(val.model_dump(mode='json'))
         elif isinstance(val, dict):
-            return {k: convert_value(v) for k, v in val.items()}
+            return {str(k): convert_value(v) for k, v in val.items()}
         elif isinstance(val, list):
             return [convert_value(v) for v in val]
         return val
@@ -408,7 +408,7 @@ async def get_evaluator(evaluator_id: str):
 _running_project_tasks: Dict[str, List[asyncio.Task]] = {}
 
 
-async def _run_agent_task(project_id: str, template_id: str, role: str, agent_idx: int, max_experiments: int = 50):
+async def _run_agent_task(project_id: str, template_id: str, role: str, agent_idx: int, max_experiments: int = 50, checkpoint_every: int = 10):
     """Background coroutine: run one agent for a project."""
     try:
         from config import load_settings
@@ -420,6 +420,8 @@ async def _run_agent_task(project_id: str, template_id: str, role: str, agent_id
         settings.template_id = template_id
         settings.experiment_delay = 3.0
         settings.max_experiments = max_experiments
+        settings.checkpoint_every = checkpoint_every
+        settings.project_id = project_id
 
         agent = ForgeAgent(settings, role=role)
         await agent.run_loop()
@@ -452,11 +454,12 @@ async def start_project_agents(project_id: str, body: dict = {}):
     roles_order = ["explorer", "refiner", "synthesizer"]
     roles = body.get("roles", roles_order[:agent_count])
     max_experiments = int(body.get("max_experiments", 50))
+    checkpoint_every = int(body.get("checkpoint_every", 10))  # Default: checkpoint every 10 experiments
 
     tasks = []
     for i, role in enumerate(roles[:agent_count]):
         task = asyncio.create_task(
-            _run_agent_task(project_id, template_id, role, i + 1, max_experiments=max_experiments)
+            _run_agent_task(project_id, template_id, role, i + 1, max_experiments=max_experiments, checkpoint_every=checkpoint_every)
         )
         tasks.append(task)
 
@@ -479,7 +482,92 @@ async def stop_project_agents(project_id: str):
         if not task.done():
             task.cancel()
             cancelled += 1
+    store.clear_checkpoint(project_id)
     return {"success": True, "agents_stopped": cancelled}
+
+
+@app.get("/projects/{project_id}/checkpoint")
+async def get_checkpoint_state(project_id: str):
+    """Get checkpoint state for a project."""
+    state = store.get_checkpoint_state(project_id)
+    global_best = store.get_global_best(
+        body.get("template_id", "landing-page-cro") if (body := {}) else "landing-page-cro"
+    )
+    recent = store.get_recent_experiments(
+        body.get("template_id", "landing-page-cro") if (body := {}) else "landing-page-cro",
+        limit=10
+    )
+    return {
+        "project_id": project_id,
+        "at_checkpoint": state.get("at_checkpoint", False),
+        "paused": state.get("paused", False),
+        "message": state.get("message", ""),
+        "timestamp": state.get("timestamp", ""),
+        "current_best": {
+            "metric": global_best.metric if global_best else 0,
+            "config": global_best.config if global_best else {}
+        } if global_best else None,
+        "recent_experiments": [
+            {
+                "id": e.id,
+                "hypothesis": e.hypothesis,
+                "metric_before": e.metric_before,
+                "metric_after": e.metric_after,
+                "status": e.status.value if hasattr(e.status, 'value') else str(e.status)
+            }
+            for e in recent[:5]
+        ]
+    }
+
+
+@app.post("/projects/{project_id}/checkpoint/continue")
+async def continue_from_checkpoint(project_id: str):
+    """Continue optimization from a checkpoint."""
+    store.clear_checkpoint(project_id)
+    
+    # Broadcast resume event
+    await broadcast_to_websockets({
+        "type": "checkpoint_resumed",
+        "project_id": project_id,
+        "message": "Optimization continued"
+    })
+    
+    return {"success": True, "message": "Continuing optimization"}
+
+
+@app.post("/projects/{project_id}/checkpoint/stop")
+async def stop_at_checkpoint(project_id: str):
+    """Stop optimization at a checkpoint."""
+    store.clear_checkpoint(project_id)
+    tasks = _running_project_tasks.pop(project_id, [])
+    for task in tasks:
+        if not task.done():
+            task.cancel()
+    
+    await broadcast_to_websockets({
+        "type": "checkpoint_stopped",
+        "project_id": project_id,
+        "message": "Optimization stopped by user"
+    })
+    
+    return {"success": True, "message": "Optimization stopped"}
+
+
+@app.post("/projects/{project_id}/checkpoint/redirect")
+async def redirect_from_checkpoint(project_id: str, body: dict):
+    """Redirect optimization with new constraints."""
+    store.clear_checkpoint(project_id)
+    
+    new_direction = body.get("direction", "")
+    
+    await broadcast_to_websockets({
+        "type": "checkpoint_redirected",
+        "project_id": project_id,
+        "direction": new_direction,
+        "message": f"Optimization redirected: {new_direction}"
+    })
+    
+    return {"success": True, "message": f"Redirected: {new_direction}"}
 
 
 # ═══════════════════════════════════════════════════════════════════════

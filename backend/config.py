@@ -12,8 +12,10 @@ class Settings(BaseModel):
     agent_id: str = "agent-1"
     agent_name: str = "Agent Alpha"
     template_id: str = "landing-page-cro"
+    project_id: str = ""
     experiment_delay: float = 3.0  # seconds between experiments
     max_experiments: int = 50  # hard cap - never exceed this
+    checkpoint_every: int = 10  # pause every N experiments for user review
     plateau_patience: int = 15  # stop if no improvement in this many attempts
     improvement_threshold: float = 0.01  # minimum improvement to count as success
     max_retries: int = 3

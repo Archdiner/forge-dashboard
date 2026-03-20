@@ -173,6 +173,14 @@ const MOCK_GLOBAL_BEST: GlobalBest = {
   last_updated: new Date().toISOString(),
 };
 
+export interface CheckpointState {
+  atCheckpoint: boolean;
+  experimentCount: number;
+  improvementsFound: number;
+  currentBest: GlobalBest | null;
+  message: string;
+}
+
 export function useForgeStore(templateId: TemplateId = 'landing-page-cro') {
   const [experiments, setExperiments] = useState<Experiment[]>(MOCK_EXPERIMENTS);
   const [agents, setAgents] = useState<Agent[]>(MOCK_AGENTS);
@@ -180,6 +188,7 @@ export function useForgeStore(templateId: TemplateId = 'landing-page-cro') {
   const [isConnected, setIsConnected] = useState(false);
   const [currentTemplate, setCurrentTemplate] = useState<TemplateId>(templateId);
   const [isLoading, setIsLoading] = useState(false);
+  const [checkpointState, setCheckpointState] = useState<CheckpointState | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
 
   const connectWebSocket = useCallback(() => {
@@ -243,6 +252,23 @@ export function useForgeStore(templateId: TemplateId = 'landing-page-cro') {
       case 'agent_registered': {
         const agent = message.data as Agent;
         setAgents(prev => [...prev, agent]);
+        break;
+      }
+      case 'checkpoint': {
+        const data = message as { type: string; experiment_count: number; improvements_found: number; current_best: GlobalBest; message: string };
+        setCheckpointState({
+          atCheckpoint: true,
+          experimentCount: data.experiment_count,
+          improvementsFound: data.improvements_found,
+          currentBest: data.current_best,
+          message: data.message,
+        });
+        break;
+      }
+      case 'checkpoint_resumed':
+      case 'checkpoint_stopped':
+      case 'checkpoint_redirected': {
+        setCheckpointState(null);
         break;
       }
     }
@@ -363,6 +389,7 @@ export function useForgeStore(templateId: TemplateId = 'landing-page-cro') {
     switchTemplate,
     startExperiment,
     createProject,
+    checkpointState,
     cost: {
       total: experiments.length * costPerExperiment,
       llm: experiments.length * costPerExperiment,
@@ -371,5 +398,30 @@ export function useForgeStore(templateId: TemplateId = 'landing-page-cro') {
     optimizationCurve,
     experimentCount: experiments.length,
     templateName: TEMPLATES.find(t => t.id === templateId)?.name ?? 'Unknown',
+    continueOptimization: async () => {
+      try {
+        await fetch(`${API_BASE}/projects/${templateId}/checkpoint/continue`, { method: 'POST' });
+      } catch (e) {
+        console.error('Failed to continue:', e);
+      }
+    },
+    stopOptimization: async () => {
+      try {
+        await fetch(`${API_BASE}/projects/${templateId}/checkpoint/stop`, { method: 'POST' });
+      } catch (e) {
+        console.error('Failed to stop:', e);
+      }
+    },
+    redirectOptimization: async (direction: string) => {
+      try {
+        await fetch(`${API_BASE}/projects/${templateId}/checkpoint/redirect`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ direction }),
+        });
+      } catch (e) {
+        console.error('Failed to redirect:', e);
+      }
+    },
   };
 }
