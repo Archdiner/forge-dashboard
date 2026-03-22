@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../lib/auth';
 
+const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
+
 const mono = `'JetBrains Mono', monospace`;
 const serif = `'Instrument Serif', Georgia, serif`;
 
@@ -32,6 +34,24 @@ export default function ProjectsList() {
 
         loadProjects();
     }, [user]);
+
+    const handleDelete = async (e: React.MouseEvent, projectId: string) => {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        if (!confirm('Delete this project? This cannot be undone.')) return;
+        
+        // Delete from backend
+        try {
+            await fetch(`${API_BASE}/projects/${projectId}`, { method: 'DELETE' });
+        } catch { /* ignore */ }
+        
+        // Delete from Supabase
+        await supabase.from('projects').delete().eq('id', projectId);
+        
+        // Update UI
+        setProjects(prev => prev.filter(p => p.id !== projectId));
+    };
 
     if (loading) {
         return (
@@ -87,11 +107,12 @@ export default function ProjectsList() {
             </div>
 
             {/* Table Header */}
-            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: 16, paddingBottom: 12, borderBottom: '1px solid rgba(26,22,20,0.08)', marginBottom: 8 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 60px', gap: 16, paddingBottom: 12, borderBottom: '1px solid rgba(26,22,20,0.08)', marginBottom: 8 }}>
                 <div style={{ fontFamily: mono, fontSize: 10, color: inkMuted, textTransform: 'uppercase', letterSpacing: 1 }}>Project</div>
                 <div style={{ fontFamily: mono, fontSize: 10, color: inkMuted, textTransform: 'uppercase', letterSpacing: 1 }}>Type</div>
                 <div style={{ fontFamily: mono, fontSize: 10, color: inkMuted, textTransform: 'uppercase', letterSpacing: 1 }}>Status</div>
                 <div style={{ fontFamily: mono, fontSize: 10, color: inkMuted, textTransform: 'uppercase', letterSpacing: 1, textAlign: 'right' }}>Created</div>
+                <div></div>
             </div>
 
             {/* Rows */}
@@ -101,13 +122,14 @@ export default function ProjectsList() {
                     to={`/dashboard/project/${project.id}`}
                     style={{
                         display: 'grid',
-                        gridTemplateColumns: '2fr 1fr 1fr 1fr',
+                        gridTemplateColumns: '2fr 1fr 1fr 1fr 60px',
                         gap: 16,
                         padding: '20px 0',
                         borderBottom: '1px solid rgba(26,22,20,0.05)',
                         textDecoration: 'none',
                         color: 'inherit',
                         transition: 'background 0.15s',
+                        alignItems: 'center',
                     }}
                     onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = cream; }}
                     onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
@@ -137,6 +159,22 @@ export default function ProjectsList() {
                     </div>
                     <div style={{ fontFamily: mono, fontSize: 12, color: inkMuted, textAlign: 'right', paddingTop: 8 }}>
                         {new Date(project.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                        <button
+                            onClick={(e) => handleDelete(e, project.id)}
+                            style={{
+                                background: 'none',
+                                border: 'none',
+                                cursor: 'pointer',
+                                color: inkMuted,
+                                fontSize: 18,
+                                padding: 4,
+                            }}
+                            title="Delete project"
+                        >
+                            ×
+                        </button>
                     </div>
                 </Link>
             ))}

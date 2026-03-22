@@ -295,11 +295,55 @@ async def get_project(project_id: str):
 
 @app.delete("/projects/{project_id}")
 async def delete_project(project_id: str):
-    """Delete a project."""
+    """Delete a project and all its data."""
+    # Stop any running agents
+    if project_id in _running_project_tasks:
+        tasks = _running_project_tasks.pop(project_id, [])
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+    
+    # Delete project
     if project_id in store.projects:
         del store.projects[project_id]
-        return {"success": True}
-    return {"error": "Project not found"}
+    
+    # Delete experiments for this project
+    to_delete = [eid for eid, exp in store.experiments.items() if exp.agent_id.startswith(project_id)]
+    for eid in to_delete:
+        del store.experiments[eid]
+    
+    # Delete checkpoint state
+    if project_id in store.checkpoint_state:
+        del store.checkpoint_state[project_id]
+    
+    return {"success": True}
+
+
+@app.post("/projects/{project_id}/reset")
+async def reset_project(project_id: str):
+    """Reset a project's experiments and global best."""
+    # Delete experiments for this project
+    to_delete = [eid for eid, exp in store.experiments.items() if exp.agent_id.startswith(project_id)]
+    for eid in to_delete:
+        del store.experiments[eid]
+    
+    # Get project template and reset global best to default
+    project = store.projects.get(project_id)
+    if project:
+        template_id = project.template_id
+        template = get_template(template_id)
+        default_metric = template.get_default_metric()
+        default_config = template.default_config.copy()
+        
+        store.global_best[template_id] = GlobalBest(
+            template_id=template_id,
+            metric=default_metric,
+            config=default_config,
+            experiment_count=0,
+            last_updated=datetime.now()
+        )
+    
+    return {"success": True}
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -474,8 +518,23 @@ async def start_project_agents(project_id: str, body: dict = {}):
         if not task.done():
             task.cancel()
 
+    # Reset experiments for this project before starting fresh
+    to_delete = [eid for eid, exp in store.experiments.items() if exp.agent_id and exp.agent_id.startswith(project_id)]
+    for eid in to_delete:
+        del store.experiments[eid]
+
+    # Reset global best to default for this template
     project = store.projects.get(project_id)
     template_id = body.get("template_id") or (project.template_id if project else "landing-page-cro")
+    if template_id in store.global_best:
+        template = get_template(template_id)
+        store.global_best[template_id] = GlobalBest(
+            template_id=template_id,
+            metric=template.get_default_metric(),
+            config=template.default_config.copy(),
+            experiment_count=0,
+            last_updated=datetime.now()
+        )
 
     agent_count = int(body.get("agent_count", 1))
     roles_order = ["explorer", "refiner", "synthesizer"]
