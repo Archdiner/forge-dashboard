@@ -1,16 +1,16 @@
 from templates.base import BaseTemplate, Hypothesis, EvaluationResult
 from templates.landing_page import LandingPageTemplate
-from templates.prompt_opt import PromptOptimizationTemplate
-from templates.portfolio import PortfolioOptimizationTemplate
-from templates.email_outreach import EmailOutreachTemplate
-from templates.dcf import DCFTemplate
+from templates.structural import StructuralTemplate
+from templates.onboarding import OnboardingTemplate
+from templates.pricing_page import PricingPageTemplate
+from templates.feature_announcement import FeatureAnnouncementTemplate
 
 TEMPLATES = {
-    "landing-page-cro": LandingPageTemplate,
-    "prompt-optimization": PromptOptimizationTemplate,
-    "portfolio-optimization": PortfolioOptimizationTemplate,
-    "email-outreach": EmailOutreachTemplate,
-    "dcf-model": DCFTemplate,
+    "landing-page-cro":     LandingPageTemplate,
+    "structural":           StructuralTemplate,
+    "onboarding":           OnboardingTemplate,
+    "pricing-page":         PricingPageTemplate,
+    "feature-announcement": FeatureAnnouncementTemplate,
 }
 
 
