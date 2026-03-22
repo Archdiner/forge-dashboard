@@ -399,14 +399,16 @@ function Hero({ best, experimentCount, totalCost, agentCount, templateId }: {
   );
 }
 
-function StatsRow({ best, experimentCount, cost, cycleHistory, templateId }: {
+function StatsRow({ best, experimentCount, cost, cycleHistory, templateId, successCount }: {
   best: ReturnType<typeof useForgeStore>['globalBest'];
   experimentCount: number;
   cost: { total: number };
   cycleHistory: CycleHistoryItem[];
   templateId: TemplateId;
+  successCount: number;
 }) {
   const keptCycles = cycleHistory.filter(c => c.decision === 'kept').length;
+  const improvements = keptCycles > 0 ? keptCycles : successCount;
 
   return (
     <div style={{ display: 'flex', gap: 40, paddingBottom: 32, marginBottom: 32, borderBottom: '1px solid rgba(26,22,20,0.06)', flexWrap: 'wrap' }}>
@@ -428,7 +430,7 @@ function StatsRow({ best, experimentCount, cost, cycleHistory, templateId }: {
       </div>
       <div>
         <div style={{ fontFamily: mono, fontSize: 28, fontWeight: 500, color: green, marginBottom: 6 }}>
-          {keptCycles || Math.floor(experimentCount * 0.3) || '—'}
+          {improvements || '—'}
         </div>
         <div style={{ fontSize: 11, color: inkMuted, textTransform: 'uppercase', letterSpacing: 0.5 }}>
           Improvements kept
@@ -644,12 +646,21 @@ export default function ProjectDetails() {
         setProjectData({ name: 'Demo Project', template_id: tpl, description: '' });
         return;
       }
+      // Try Supabase first
       const { data } = await supabase
         .from('projects')
         .select('name, template_id, description')
         .eq('id', id)
         .single();
-      if (data) setProjectData(data);
+      if (data) { setProjectData(data); return; }
+      // Fallback: load from backend API (in-memory store)
+      try {
+        const res = await fetch(`${API_BASE}/projects/${id}`);
+        const proj = await res.json();
+        if (proj && proj.name) {
+          setProjectData({ name: proj.name, template_id: proj.template_id, description: proj.description ?? '' });
+        }
+      } catch { /* ignore */ }
     }
     loadProject();
   }, [id]);
@@ -796,11 +807,11 @@ export default function ProjectDetails() {
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>
-                  <button onClick={() => store.continueOptimization()}
+                  <button onClick={() => store.continueOptimization(id ?? '')}
                     style={{ padding: '8px 20px', fontSize: 13, fontWeight: 600, background: green, color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}>
                     Continue
                   </button>
-                  <button onClick={() => store.stopOptimization()}
+                  <button onClick={() => store.stopOptimization(id ?? '')}
                     style={{ padding: '8px 16px', fontSize: 13, background: '#fff', color: '#92400e', border: '1px solid #f59e0b', borderRadius: 6, cursor: 'pointer' }}>
                     Stop
                   </button>
@@ -826,6 +837,7 @@ export default function ProjectDetails() {
             cost={store.cost}
             cycleHistory={cycleHistory}
             templateId={templateId}
+            successCount={store.experiments.filter(e => e.status === 'success').length}
           />
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: 40 }}>

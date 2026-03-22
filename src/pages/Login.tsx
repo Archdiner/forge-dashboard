@@ -72,11 +72,12 @@ export default function Login() {
                 {/* Logo */}
                 <div style={{ textAlign: 'center', marginBottom: 40 }}>
                     <Link to="/" style={{ textDecoration: 'none' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 32 }}>
-                            <div style={{ width: 36, height: 36, borderRadius: 8, background: copper, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                <span style={{ color: '#FFF', fontWeight: 600, fontSize: 16 }}>F</span>
-                            </div>
-                            <span style={{ fontFamily: mono, fontSize: 16, fontWeight: 500, color: '#8B5A1B', letterSpacing: -0.5 }}>forge</span>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, marginBottom: 32 }}>
+                            <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ display: 'block' }}>
+                                <polygon points="16,1 31,16 16,31 1,16" fill="#1A1614" />
+                                <polygon points="16,8 24,16 16,24 8,16" fill="#C47A2A" />
+                            </svg>
+                            <span style={{ fontFamily: mono, fontSize: 16, fontWeight: 600, color: ink, letterSpacing: '-0.03em' }}>forge</span>
                         </div>
                     </Link>
                     

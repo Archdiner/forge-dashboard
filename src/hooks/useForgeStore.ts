@@ -54,104 +54,6 @@ export interface GlobalBest {
   last_updated: string;
 }
 
-// Fallback mock data for when API returns empty (metrics in production rate scale)
-const MOCK_EXPERIMENTS: Experiment[] = [
-  {
-    id: 'exp-47', agent_id: 'agent-2', agent_name: 'Agent Beta',
-    template_id: 'landing-page-cro',
-    hypothesis: 'Question-format headline to create curiosity gap',
-    mutation: 'Changed headline to "Want to 10x your conversion rate?"',
-    metric_before: 0.0374, metric_after: 0.0421, status: 'success',
-    reasoning: '+0.47pp CVR — question format increased engagement.',
-    created_at: new Date(Date.now() - 2 * 60 * 1000).toISOString(),
-    completed_at: new Date(Date.now() - 2 * 60 * 1000).toISOString(),
-  },
-  {
-    id: 'exp-46', agent_id: 'agent-1', agent_name: 'Agent Alpha',
-    template_id: 'landing-page-cro',
-    hypothesis: 'Shorter value propositions to reduce cognitive load',
-    mutation: 'Shortened value props to 8 words each',
-    metric_before: 0.0389, metric_after: 0.0351, status: 'failure',
-    reasoning: '-0.38pp CVR — brevity lost key value signals.',
-    created_at: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
-    completed_at: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
-  },
-  {
-    id: 'exp-45', agent_id: 'agent-3', agent_name: 'Agent Gamma',
-    template_id: 'onboarding',
-    hypothesis: 'Remove company_name field from profile step to reduce friction',
-    mutation: 'Removed company_name from step_fields.profile',
-    metric_before: 0.495, metric_after: 0.521, status: 'success',
-    reasoning: '+2.6pp completion — one less required field in step 2.',
-    created_at: new Date(Date.now() - 8 * 60 * 1000).toISOString(),
-    completed_at: new Date(Date.now() - 8 * 60 * 1000).toISOString(),
-  },
-  {
-    id: 'exp-44', agent_id: 'agent-2', agent_name: 'Agent Beta',
-    template_id: 'pricing-page',
-    hypothesis: 'CTA copy "Start Free — No Card Needed" to remove risk perception',
-    mutation: 'Updated cta_text.pro to "Start Free — No Card Needed"',
-    metric_before: 0.0378, metric_after: 0.0431, status: 'success',
-    reasoning: '+0.53pp upgrade rate — no-card framing reduces commitment anxiety.',
-    created_at: new Date(Date.now() - 12 * 60 * 1000).toISOString(),
-    completed_at: new Date(Date.now() - 12 * 60 * 1000).toISOString(),
-  },
-  {
-    id: 'exp-43', agent_id: 'agent-1', agent_name: 'Agent Alpha',
-    template_id: 'feature-announcement',
-    hypothesis: 'Move announcement from sidebar to popover for higher visibility',
-    mutation: 'Changed feature_position from "sidebar" to "popover"',
-    metric_before: 0.184, metric_after: 0.209, status: 'success',
-    reasoning: '+2.5pp adoption — popover intercepts attention more effectively.',
-    created_at: new Date(Date.now() - 18 * 60 * 1000).toISOString(),
-    completed_at: new Date(Date.now() - 18 * 60 * 1000).toISOString(),
-  },
-];
-
-const MOCK_AGENTS: Agent[] = [
-  {
-    id: 'agent-1',
-    name: 'Agent Alpha',
-    status: 'idle',
-    experiments_run: 18,
-    improvements_found: 4,
-    current_hypothesis: null,
-    last_active: new Date().toISOString(),
-  },
-  {
-    id: 'agent-2',
-    name: 'Agent Beta',
-    status: 'idle',
-    experiments_run: 15,
-    improvements_found: 3,
-    current_hypothesis: null,
-    last_active: new Date().toISOString(),
-  },
-  {
-    id: 'agent-3',
-    name: 'Agent Gamma',
-    status: 'idle',
-    experiments_run: 14,
-    improvements_found: 2,
-    current_hypothesis: null,
-    last_active: new Date().toISOString(),
-  },
-];
-
-const MOCK_GLOBAL_BEST: GlobalBest = {
-  template_id: 'landing-page-cro',
-  metric: 68.2,
-  config: {
-    headline: 'Want to 10x your conversion rate?',
-    subheadline: 'Finally, AI that actually works for you',
-    cta_text: 'Start Free Trial',
-    value_props: ['10x faster experiments', '50% more conversions', 'No coding required'],
-    social_proof: 'Trusted by 2,847 growth teams',
-    tone: 'casual',
-  },
-  experiment_count: 47,
-  last_updated: new Date().toISOString(),
-};
 
 export interface CheckpointState {
   atCheckpoint: boolean;
@@ -184,9 +86,9 @@ export interface CycleHistoryItem extends ActiveCycle {
 }
 
 export function useForgeStore(templateId: TemplateId = 'landing-page-cro') {
-  const [experiments, setExperiments] = useState<Experiment[]>(MOCK_EXPERIMENTS);
-  const [agents, setAgents] = useState<Agent[]>(MOCK_AGENTS);
-  const [globalBest, setGlobalBest] = useState<GlobalBest | null>(MOCK_GLOBAL_BEST);
+  const [experiments, setExperiments] = useState<Experiment[]>([]);
+  const [agents, setAgents] = useState<Agent[]>([]);
+  const [globalBest, setGlobalBest] = useState<GlobalBest | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [currentTemplate, setCurrentTemplate] = useState<TemplateId>(templateId);
   const [isLoading, setIsLoading] = useState(false);
@@ -198,7 +100,8 @@ export function useForgeStore(templateId: TemplateId = 'landing-page-cro') {
   const connectWebSocket = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
 
-    const ws = new WebSocket('ws://localhost:8000/ws/dashboard');
+    const wsBase = API_BASE.replace(/^http/, 'ws');
+    const ws = new WebSocket(`${wsBase}/ws/dashboard`);
     
     ws.onopen = () => {
       setIsConnected(true);
@@ -423,23 +326,23 @@ export function useForgeStore(templateId: TemplateId = 'landing-page-cro') {
     optimizationCurve,
     experimentCount: experiments.length,
     templateName: TEMPLATES.find(t => t.id === templateId)?.name ?? 'Unknown',
-    continueOptimization: async () => {
+    continueOptimization: async (projectId: string) => {
       try {
-        await fetch(`${API_BASE}/projects/${templateId}/checkpoint/continue`, { method: 'POST' });
+        await fetch(`${API_BASE}/projects/${projectId}/checkpoint/continue`, { method: 'POST' });
       } catch (e) {
         console.error('Failed to continue:', e);
       }
     },
-    stopOptimization: async () => {
+    stopOptimization: async (projectId: string) => {
       try {
-        await fetch(`${API_BASE}/projects/${templateId}/checkpoint/stop`, { method: 'POST' });
+        await fetch(`${API_BASE}/projects/${projectId}/checkpoint/stop`, { method: 'POST' });
       } catch (e) {
         console.error('Failed to stop:', e);
       }
     },
-    redirectOptimization: async (direction: string) => {
+    redirectOptimization: async (projectId: string, direction: string) => {
       try {
-        await fetch(`${API_BASE}/projects/${templateId}/checkpoint/redirect`, {
+        await fetch(`${API_BASE}/projects/${projectId}/checkpoint/redirect`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ direction }),

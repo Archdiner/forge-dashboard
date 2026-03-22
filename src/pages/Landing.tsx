@@ -13,7 +13,6 @@ const inkMuted    = 'rgba(26,22,20,0.45)';
 const inkFaint    = 'rgba(26,22,20,0.1)';
 const cream       = '#FAF8F5';
 const green       = '#10B981';
-const greenDim    = 'rgba(16,185,129,0.12)';
 const dark        = '#161514';
 const white       = '#FFFFFF';
 
@@ -62,292 +61,157 @@ function ForgeLogo({ size = 28, light = false }: { size?: number; light?: boolea
   );
 }
 
-// ── Agent Terminal ─────────────────────────────────────────────
-const EXPERIMENTS = [
-  {
-    hypothesis: 'Question-format headline creates stronger curiosity gap',
-    mutation: '"Want to 10x your CVR tonight?"',
-    result: 3.89,
-    diff: '+0.43pp',
-  },
-  {
-    hypothesis: 'Social proof count increases trust signal above fold',
-    mutation: '"2,847 teams already optimizing"',
-    result: 4.01,
-    diff: '+0.55pp',
-  },
-  {
-    hypothesis: 'Frictionless CTA copy reduces commitment anxiety',
-    mutation: '"Start Free — No Card Needed"',
-    result: 3.74,
-    diff: '+0.28pp',
-  },
-];
+// ── Forge Chart Preview ────────────────────────────────────────
+// Non-monotonic: some experiments fail, net trend up — honest
+const CHART_PTS = [3.46, 3.52, 3.61, 3.55, 3.74, 3.71, 3.89, 3.95, 4.01, 3.98, 4.21];
 
-// phase: 0=idle 1=thinking 2=hypothesis 3=deploying 4=measuring 5=result 6=kept
-const DURATIONS = [500, 1100, 1500, 900, 1900, 1500, 1300];
+function ForgeChartPreview() {
+  const [animKey, setAnimKey] = useState(0);
 
-function AgentTerminal() {
-  const [cycle, setCycle]           = useState(0);
-  const [phase, setPhase]           = useState(0);
-  const [typed, setTyped]           = useState('');
-  const [sessions, setSessions]     = useState(0);
-  const [measuredCvr, setMeasured]  = useState(3.46);
-
-  const exp = EXPERIMENTS[cycle % EXPERIMENTS.length];
-  const termMuted  = 'rgba(255,255,255,0.32)';
-  const termText   = 'rgba(255,255,255,0.82)';
-  const termBg     = '#0D0C0B';
-
-  // Phase advancement
+  // Restart the CSS draw animation every 7s
   useEffect(() => {
-    const t = setTimeout(() => {
-      if (phase < 6) {
-        setPhase(p => p + 1);
-      } else {
-        setCycle(c => c + 1);
-        setPhase(0);
-        setMeasured(3.46);
-        setSessions(0);
-        setTyped('');
-      }
-    }, DURATIONS[phase]);
-    return () => clearTimeout(t);
-  }, [phase, cycle]);
+    const t = setInterval(() => setAnimKey(k => k + 1), 7000);
+    return () => clearInterval(t);
+  }, []);
 
-  // Typewriter
-  useEffect(() => {
-    if (phase !== 2) return;
-    setTyped('');
-    let i = 0;
-    const str = exp.hypothesis;
-    const iv = setInterval(() => {
-      if (i < str.length) { setTyped(str.slice(0, i + 1)); i++; }
-      else clearInterval(iv);
-    }, 24);
-    return () => clearInterval(iv);
-  }, [phase, cycle]);
+  const W = 300, H = 96, PAD = 12;
+  const minV = 3.2, maxV = 4.4;
+  const toX = (i: number) => PAD + (i / (CHART_PTS.length - 1)) * (W - PAD * 2);
+  const toY = (v: number) => H - PAD - ((v - minV) / (maxV - minV)) * (H - PAD * 2);
+  const pts = CHART_PTS.map((v, i) => ({ x: toX(i), y: toY(v) }));
+  const lineStr = pts.map(p => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(' ');
+  const areaStr = `M${pts[0].x},${H} ` + pts.map(p => `L${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(' ') + ` L${pts[pts.length-1].x},${H} Z`;
 
-  // Session counter
-  useEffect(() => {
-    if (phase !== 4) return;
-    let n = 0;
-    const target = 1247;
-    const iv = setInterval(() => {
-      n = Math.min(n + 42, target);
-      setSessions(n);
-      if (n >= target) clearInterval(iv);
-    }, 60);
-    return () => clearInterval(iv);
-  }, [phase]);
-
-  // CVR animation
-  useEffect(() => {
-    if (phase !== 5) return;
-    let cur = 3.46;
-    const target = exp.result;
-    const step = (target - cur) / 36;
-    const iv = setInterval(() => {
-      cur = Math.min(cur + step, target);
-      setMeasured(+cur.toFixed(4));
-      if (cur >= target) clearInterval(iv);
-    }, 30);
-    return () => clearInterval(iv);
-  }, [phase, cycle]);
+  const finalCvr  = CHART_PTS[CHART_PTS.length - 1];
+  const totalLift = +(finalCvr - CHART_PTS[0]).toFixed(2);
+  const totalCost = ((CHART_PTS.length - 1) * 0.0001).toFixed(4);
 
   return (
     <div style={{
-      background: termBg,
-      borderRadius: 18,
+      background: white, borderRadius: 20,
+      border: `1px solid ${inkFaint}`,
       overflow: 'hidden',
-      border: '1px solid rgba(255,255,255,0.07)',
-      boxShadow: '0 40px 80px -20px rgba(0,0,0,0.55), 0 0 0 1px rgba(0,0,0,0.3)',
-      fontFamily: mono,
-      fontSize: 12,
+      boxShadow: '0 24px 60px -10px rgba(0,0,0,0.09), 0 4px 16px rgba(0,0,0,0.05)',
     }}>
-      {/* Title bar */}
+      {/* Header */}
       <div style={{
-        display: 'flex', alignItems: 'center', gap: 10,
-        padding: '13px 20px',
-        borderBottom: '1px solid rgba(255,255,255,0.06)',
-        background: 'rgba(255,255,255,0.02)',
+        padding: '14px 20px', borderBottom: `1px solid ${inkFaint}`,
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       }}>
-        <div style={{
-          width: 8, height: 8, borderRadius: '50%',
-          background: green,
-          boxShadow: `0 0 10px ${green}70`,
-          animation: 'pulse-green 2s ease-in-out infinite',
-        }} />
-        <span style={{ color: termText, fontWeight: 500 }}>Forge Agent</span>
-        <span style={{ color: termMuted }}>· running</span>
-        <div style={{ marginLeft: 'auto' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{
+            width: 7, height: 7, borderRadius: '50%',
+            background: copper, boxShadow: `0 0 8px ${copper}70`,
+            animation: 'pulse-copper 2.5s ease-in-out infinite',
+          }} />
+          <span style={{ fontFamily: mono, fontSize: 12, fontWeight: 500, color: ink }}>
+            Landing Page CRO
+          </span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{
+            fontFamily: mono, fontSize: 10, fontWeight: 600, color: copper,
             background: copperDim, border: `1px solid ${copperBorder}`,
-            color: copper, borderRadius: 5, padding: '2px 10px',
-            fontSize: 10, letterSpacing: 0.6, fontWeight: 500,
+            borderRadius: 4, padding: '2px 8px',
           }}>
-            landing-page-cro
+            +{totalLift}pp
+          </span>
+          <span style={{ fontFamily: mono, fontSize: 10, color: inkMuted }}>
+            {CHART_PTS.length - 1} experiments
           </span>
         </div>
       </div>
 
-      {/* Body */}
-      <div style={{ padding: '22px 22px 18px' }}>
-        {/* Baseline row — always visible */}
+      {/* Chart — smooth CSS draw animation, copper palette */}
+      <div style={{ padding: '18px 20px 0', background: cream }}>
+        <div style={{ fontFamily: mono, fontSize: 9, color: inkMuted, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
+          Conversion rate %
+        </div>
+        <svg
+          key={animKey}
+          width="100%" height={H}
+          viewBox={`0 0 ${W} ${H}`}
+          style={{ display: 'block', overflow: 'visible' }}
+          preserveAspectRatio="none"
+        >
+          {/* Subtle grid */}
+          {[0.25, 0.5, 0.75].map((t, i) => (
+            <line
+              key={i}
+              x1={PAD} y1={PAD + t * (H - PAD * 2)}
+              x2={W - PAD} y2={PAD + t * (H - PAD * 2)}
+              stroke="rgba(26,22,20,0.06)" strokeWidth="0.7"
+            />
+          ))}
+          {/* Area — fades in after line is mostly drawn */}
+          <path
+            d={areaStr}
+            fill="rgba(196,122,42,0.07)"
+            style={{ opacity: 0, animation: 'fadein 0.8s ease 2.5s forwards' }}
+          />
+          {/* Line — smooth stroke-dashoffset draw */}
+          <polyline
+            points={lineStr}
+            fill="none"
+            stroke={copper}
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            pathLength="1"
+            strokeDasharray="1"
+            strokeDashoffset="1"
+            style={{ animation: 'draw-line 3s cubic-bezier(0.4, 0, 0.2, 1) forwards' }}
+          />
+          {/* Dots — staggered appearance matching line progress */}
+          {pts.map((p, i) => (
+            <circle
+              key={`d-${animKey}-${i}`}
+              cx={p.x} cy={p.y}
+              r={i === pts.length - 1 ? 4 : 2.5}
+              fill={copper}
+              style={{
+                opacity: 0,
+                animation: `fadein 0.25s ease ${(i / (pts.length - 1)) * 3}s forwards`,
+              }}
+            />
+          ))}
+        </svg>
+
+        {/* X-axis ticks */}
         <div style={{
           display: 'flex', justifyContent: 'space-between',
-          marginBottom: 20, paddingBottom: 16,
-          borderBottom: '1px solid rgba(255,255,255,0.06)',
+          padding: '5px 0 14px',
         }}>
-          <span style={{ color: termMuted, fontSize: 10, textTransform: 'uppercase', letterSpacing: 1 }}>Baseline CVR</span>
-          <span style={{ color: termText }}>3.46%</span>
-        </div>
-
-        {/* Phase content — fixed height container */}
-        <div style={{ minHeight: 188 }}>
-
-          {/* 0: idle */}
-          {phase === 0 && (
-            <div style={{ color: termMuted, animation: 'fadein 0.25s ease' }}>
-              Initialising
-              <span style={{ animation: 'blink 1s step-end infinite' }}>_</span>
-            </div>
-          )}
-
-          {/* 1: thinking */}
-          {phase === 1 && (
-            <div style={{ animation: 'fadein 0.25s ease' }}>
-              <div style={{ color: termMuted, marginBottom: 14, fontSize: 11 }}>Generating hypothesis...</div>
-              <div style={{ display: 'flex', gap: 5 }}>
-                {[0, 1, 2].map(i => (
-                  <div key={i} style={{
-                    width: 6, height: 6, borderRadius: '50%', background: copper,
-                    animation: `bounce-dot 1.2s ease-in-out ${i * 0.18}s infinite`,
-                  }} />
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* 2+: hypothesis */}
-          {phase >= 2 && (
-            <div style={{ animation: 'fadein 0.25s ease', marginBottom: 16 }}>
-              <div style={{ color: termMuted, fontSize: 10, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>
-                Hypothesis
-              </div>
-              <div style={{ color: termText, lineHeight: 1.55, fontSize: 13 }}>
-                {phase === 2 ? typed : exp.hypothesis}
-                {phase === 2 && (
-                  <span style={{ animation: 'blink 0.75s step-end infinite' }}>_</span>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* 3+: PostHog payload */}
-          {phase >= 3 && (
-            <div style={{ animation: 'fadein 0.3s ease', marginBottom: 16 }}>
-              <div style={{ color: termMuted, fontSize: 10, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>
-                PostHog flag payload
-              </div>
-              <div style={{
-                background: 'rgba(255,255,255,0.04)',
-                border: '1px solid rgba(255,255,255,0.08)',
-                borderRadius: 8, padding: '10px 14px',
-                fontSize: 11, lineHeight: 1.7,
-              }}>
-                <span style={{ color: 'rgba(196,122,42,0.85)' }}>{'{ '}</span>
-                <span style={{ color: 'rgba(147,197,253,0.8)' }}>"variant"</span>
-                <span style={{ color: termMuted }}>: </span>
-                <span style={{ color: 'rgba(134,239,172,0.85)' }}>"{exp.mutation}"</span>
-                <span style={{ color: 'rgba(196,122,42,0.85)' }}>{' }'}</span>
-              </div>
-              {phase === 3 && (
-                <div style={{ color: termMuted, marginTop: 10, fontSize: 11 }}>
-                  Deploying to PostHog A/B split...
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* 4: measuring */}
-          {phase === 4 && (
-            <div style={{ animation: 'fadein 0.25s ease' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
-                <span style={{ color: termMuted, fontSize: 10, textTransform: 'uppercase', letterSpacing: 1 }}>
-                  Measuring
-                </span>
-                <span style={{ color: termText }}>
-                  {sessions.toLocaleString()} sessions
-                </span>
-              </div>
-              <div style={{ height: 3, background: 'rgba(255,255,255,0.07)', borderRadius: 2, overflow: 'hidden' }}>
-                <div style={{
-                  height: '100%', background: copper, borderRadius: 2,
-                  animation: 'fill-bar 1.9s cubic-bezier(0.25,0.1,0.25,1) forwards',
-                }} />
-              </div>
-            </div>
-          )}
-
-          {/* 5+: result */}
-          {phase >= 5 && (
-            <div style={{ animation: 'fadein 0.35s ease' }}>
-              <div style={{
-                display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end',
-                padding: '14px 0 10px',
-                borderTop: '1px solid rgba(255,255,255,0.07)',
-              }}>
-                <div>
-                  <div style={{ color: termMuted, fontSize: 10, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>
-                    Measured CVR
-                  </div>
-                  <div style={{ fontSize: 32, fontWeight: 700, color: white, fontVariantNumeric: 'tabular-nums' }}>
-                    {measuredCvr.toFixed(2)}%
-                  </div>
-                </div>
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ color: termMuted, fontSize: 10, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>
-                    Lift
-                  </div>
-                  <div style={{ fontSize: 22, fontWeight: 700, color: green }}>
-                    {exp.diff}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* 6: kept */}
-          {phase === 6 && (
-            <div style={{
-              animation: 'fadein 0.25s ease',
-              display: 'flex', alignItems: 'center', gap: 8,
-              marginTop: 10, padding: '9px 14px',
-              background: greenDim,
-              border: '1px solid rgba(16,185,129,0.22)',
-              borderRadius: 8,
-            }}>
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                <path d="M2 6.5l2.5 2.5 5.5-5.5" stroke={green} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-              <span style={{ color: green, fontSize: 11, fontWeight: 500 }}>
-                Winner kept · Cycle {cycle + 1} complete
-              </span>
-            </div>
-          )}
+          {['base', ...Array.from({ length: CHART_PTS.length - 1 }, (_, i) => String(i + 1))].map((l, i) => (
+            <span key={i} style={{ fontFamily: mono, fontSize: 8, color: inkMuted }}>{l}</span>
+          ))}
         </div>
       </div>
 
-      {/* Status bar */}
+      {/* Stats — white surface, final values */}
       <div style={{
-        padding: '10px 22px',
-        borderTop: '1px solid rgba(255,255,255,0.05)',
-        display: 'flex', justifyContent: 'space-between',
-        background: 'rgba(255,255,255,0.015)',
+        display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)',
+        padding: '16px 20px 18px',
+        borderTop: `1px solid ${inkFaint}`,
       }}>
-        <span style={{ color: termMuted, fontSize: 10 }}>forge · simulation mode</span>
-        <span style={{ color: termMuted, fontSize: 10 }}>cycle {cycle + 1} of ∞</span>
+        {[
+          { label: 'CVR', value: `${finalCvr.toFixed(2)}%` },
+          { label: 'Lift',  value: `+${totalLift}pp`,        copper: true },
+          { label: 'Cost',  value: `$${totalCost}` },
+        ].map(({ label, value, copper: isCopper }) => (
+          <div key={label}>
+            <div style={{ fontFamily: mono, fontSize: 9, color: inkMuted, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 5 }}>
+              {label}
+            </div>
+            <div style={{
+              fontFamily: mono, fontSize: 21, fontWeight: 700,
+              color: isCopper ? copper : ink,
+              letterSpacing: '-0.02em',
+            }}>
+              {value}
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -355,9 +219,9 @@ function AgentTerminal() {
 
 // ── Template Card ──────────────────────────────────────────────
 function TemplateCard({
-  name, desc, baseline, range,
+  num, name, outcome, tests,
 }: {
-  name: string; desc: string; baseline: string; range: string;
+  num: string; name: string; outcome: string; tests: string;
 }) {
   const [hovered, setHovered] = useState(false);
   return (
@@ -365,164 +229,180 @@ function TemplateCard({
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
-        background: white,
-        border: `1px solid ${hovered ? copperBorder : inkFaint}`,
-        borderRadius: 14,
-        padding: '24px 24px',
+        background: dark,
+        border: `1px solid ${hovered ? copperBorder : 'rgba(255,255,255,0.07)'}`,
+        borderRadius: 16,
+        padding: '30px 28px 26px',
         cursor: 'default',
-        transition: 'border-color 0.2s, box-shadow 0.2s',
-        boxShadow: hovered ? `0 8px 28px rgba(196,122,42,0.1)` : 'none',
+        transition: 'border-color 0.2s, box-shadow 0.22s',
+        boxShadow: hovered ? '0 16px 48px rgba(196,122,42,0.12)' : 'none',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'space-between',
+        minHeight: 230,
       }}
     >
-      <div style={{ marginBottom: 14 }}>
-        <div style={{ fontSize: 14, fontWeight: 600, color: ink, marginBottom: 4 }}>{name}</div>
-        <div style={{ fontSize: 12, color: inkMuted, lineHeight: 1.5 }}>{desc}</div>
+      <div>
+        {/* Number */}
+        <div style={{
+          fontFamily: mono, fontSize: 10, fontWeight: 600,
+          color: copper, letterSpacing: 1.5, marginBottom: 18,
+        }}>
+          {num}
+        </div>
+
+        {/* Feature name — dominant visual */}
+        <div style={{
+          fontFamily: serif, fontSize: 28, fontWeight: 400,
+          color: 'rgba(250,248,245,0.94)',
+          lineHeight: 1.1, letterSpacing: '-0.3px',
+          marginBottom: 16,
+        }}>
+          {name}
+        </div>
+
+        {/* Business outcome — what this means for the client */}
+        <div style={{
+          fontSize: 13, lineHeight: 1.65,
+          color: 'rgba(255,255,255,0.46)',
+        }}>
+          {outcome}
+        </div>
       </div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-        <div>
-          <div style={{ fontFamily: mono, fontSize: 11, color: inkMuted, marginBottom: 2 }}>baseline</div>
-          <div style={{ fontFamily: mono, fontSize: 18, fontWeight: 700, color: copper }}>{baseline}</div>
-        </div>
-        <div style={{ textAlign: 'right' }}>
-          <div style={{ fontFamily: mono, fontSize: 11, color: inkMuted, marginBottom: 2 }}>range</div>
-          <div style={{ fontFamily: mono, fontSize: 12, color: ink }}>{range}</div>
-        </div>
+
+      {/* What Forge actually tests — the mechanism */}
+      <div style={{
+        marginTop: 24,
+        paddingTop: 16,
+        borderTop: '1px solid rgba(255,255,255,0.07)',
+        fontFamily: mono, fontSize: 9.5,
+        color: 'rgba(255,255,255,0.22)',
+        letterSpacing: 0.4,
+        lineHeight: 1.6,
+      }}>
+        {tests}
       </div>
     </div>
   );
 }
 
 // ── Growth Demo ────────────────────────────────────────────────
-const VARIANTS = [
-  { headline: 'Save time and money',             cvr: 3.46 },
-  { headline: 'Stop wasting hours every week',   cvr: 3.71 },
-  { headline: 'Ship experiments 10x faster',     cvr: 3.89 },
+const DEMO_EXP = [
+  { headline: 'Save time and money',              cvr: 3.46 },
+  { headline: 'Stop wasting hours every week',    cvr: 3.71 },
+  { headline: 'Ship experiments 10x faster',      cvr: 3.89 },
   { headline: 'Your competitors test this daily', cvr: 4.04 },
-  { headline: 'Want to 10x your CVR tonight?',   cvr: 4.21 },
+  { headline: 'Want to 10x your CVR tonight?',    cvr: 4.21 },
 ];
 
 function GrowthDemo() {
+  const [count, setCount]     = useState(1);
   const [running, setRunning] = useState(false);
-  const [iter, setIter]       = useState(0);
 
-  useEffect(() => {
-    if (!running) return;
-    const iv = setInterval(() => {
-      setIter(i => {
-        if (i >= VARIANTS.length - 1) { setRunning(false); return i; }
-        return i + 1;
-      });
-    }, 640);
-    return () => clearInterval(iv);
-  }, [running]);
+  const runNext = () => {
+    if (running || count >= DEMO_EXP.length) return;
+    setRunning(true);
+    setTimeout(() => { setCount(c => c + 1); setRunning(false); }, 1100);
+  };
 
-  const cur = VARIANTS[iter];
-  const improvement = (((cur.cvr - 3.46) / 3.46) * 100).toFixed(0);
-  const done = iter === VARIANTS.length - 1 && !running;
+  const best = DEMO_EXP.slice(0, count).reduce((b, e) => e.cvr > b.cvr ? e : b);
+  const lift = +(best.cvr - DEMO_EXP[0].cvr).toFixed(2);
+  const done = count >= DEMO_EXP.length;
+
+  // SVG chart
+  const W = 300, H = 80, PAD = 10;
+  const minV = 3.2, maxV = 4.4;
+  const toX = (i: number) => PAD + (i / (DEMO_EXP.length - 1)) * (W - PAD * 2);
+  const toY = (v: number) => H - PAD - ((v - minV) / (maxV - minV)) * (H - PAD * 2);
+  const pts = DEMO_EXP.slice(0, count).map((e, i) => ({ x: toX(i), y: toY(e.cvr) }));
+  const lineStr = pts.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+  const areaStr = pts.length > 1
+    ? `M${pts[0].x},${H} ` + pts.map(p => `L${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ') + ` L${pts[pts.length - 1].x},${H} Z`
+    : '';
 
   return (
     <div style={{
-      background: white,
-      border: `1px solid ${inkFaint}`,
-      borderRadius: 20,
-      overflow: 'hidden',
+      background: white, border: `1px solid ${inkFaint}`,
+      borderRadius: 20, overflow: 'hidden',
+      maxWidth: 560, margin: '0 auto',
       boxShadow: '0 4px 24px rgba(0,0,0,0.05)',
-      maxWidth: 560,
-      margin: '0 auto',
     }}>
       {/* Header */}
       <div style={{
-        padding: '18px 28px',
-        borderBottom: `1px solid ${inkFaint}`,
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        padding: '14px 24px', borderBottom: `1px solid ${inkFaint}`,
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <div style={{
             width: 7, height: 7, borderRadius: '50%',
             background: running ? green : (done ? green : copper),
-            transition: 'background 0.3s',
-            boxShadow: running ? `0 0 8px ${green}60` : 'none',
+            boxShadow: running ? `0 0 8px ${green}70` : 'none',
+            transition: 'all 0.3s',
           }} />
-          <span style={{ fontFamily: mono, fontSize: 12, fontWeight: 500, color: ink }}>
-            landing-page-cro
-          </span>
+          <span style={{ fontFamily: mono, fontSize: 12, fontWeight: 500, color: ink }}>landing-page-cro</span>
         </div>
         <button
-          onClick={() => { setRunning(true); setIter(0); }}
+          onClick={done ? () => setCount(1) : runNext}
           disabled={running}
           style={{
             fontFamily: font, fontSize: 13, fontWeight: 600,
             background: running ? 'transparent' : ink,
             color: running ? inkMuted : white,
             border: running ? `1px solid ${inkFaint}` : 'none',
-            padding: '9px 20px', borderRadius: 8,
+            padding: '8px 20px', borderRadius: 8,
             cursor: running ? 'not-allowed' : 'pointer',
             transition: 'all 0.2s',
           }}
         >
-          {running ? 'Testing...' : done ? 'Run again' : 'Test variants'}
+          {running ? 'Running...' : done ? 'Reset' : `Experiment ${count}`}
         </button>
       </div>
 
-      {/* Headline */}
-      <div style={{ padding: '28px 28px 20px', background: cream }}>
-        <div style={{
-          fontFamily: mono, fontSize: 10, fontWeight: 500,
-          color: inkMuted, textTransform: 'uppercase', letterSpacing: 1.5,
-          marginBottom: 12,
-        }}>
-          Current headline variant
+      {/* Chart — same SVG approach as the hero card */}
+      <div style={{ padding: '16px 24px 0' }}>
+        <div style={{ fontFamily: mono, fontSize: 9, color: inkMuted, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>
+          CVR over experiments
         </div>
-        <div style={{
-          fontFamily: serif, fontSize: 26, color: ink,
-          lineHeight: 1.2, minHeight: 62,
-          transition: 'all 0.25s ease',
-        }}>
-          {cur.headline}
+        <svg
+          width="100%" height={H}
+          viewBox={`0 0 ${W} ${H}`}
+          style={{ display: 'block' }}
+          preserveAspectRatio="none"
+        >
+          {[0.33, 0.66].map((t, i) => (
+            <line key={i} x1={PAD} y1={PAD + t * (H - PAD * 2)} x2={W - PAD} y2={PAD + t * (H - PAD * 2)} stroke={inkFaint} strokeWidth="0.6" />
+          ))}
+          {areaStr && <path d={areaStr} fill="rgba(196,122,42,0.07)" />}
+          {pts.length > 1 && (
+            <polyline points={lineStr} fill="none" stroke={copper} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          )}
+          {pts.map((p, i) => (
+            <circle key={i} cx={p.x} cy={p.y} r={i === pts.length - 1 ? 4 : 2.5} fill={copper} />
+          ))}
+        </svg>
+      </div>
+
+      {/* Best headline */}
+      <div style={{ padding: '14px 24px', background: cream, borderTop: `1px solid ${inkFaint}`, marginTop: 10 }}>
+        <div style={{ fontFamily: mono, fontSize: 9, color: inkMuted, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>
+          Best performing headline
+        </div>
+        <div style={{ fontFamily: serif, fontSize: 22, color: ink, lineHeight: 1.3 }}>
+          {best.headline}
         </div>
       </div>
 
-      {/* Metrics */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', padding: '20px 28px', gap: 24 }}>
-        <div>
-          <div style={{
-            fontFamily: mono, fontSize: 10, fontWeight: 500,
-            color: inkMuted, textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 8,
-          }}>
-            Conversion Rate
+      {/* Stats */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', padding: '14px 24px 18px' }}>
+        {[
+          { label: 'Best CVR', value: `${best.cvr.toFixed(2)}%` },
+          { label: 'Lift', value: count > 1 ? `+${lift}pp` : '—', isCopper: count > 1 },
+          { label: 'Tested', value: `${count} / ${DEMO_EXP.length}` },
+        ].map(({ label, value, isCopper }) => (
+          <div key={label}>
+            <div style={{ fontFamily: mono, fontSize: 9, color: inkMuted, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>{label}</div>
+            <div style={{ fontFamily: mono, fontSize: 20, fontWeight: 700, color: isCopper ? copper : ink }}>{value}</div>
           </div>
-          <div style={{ fontFamily: mono, fontSize: 34, fontWeight: 700, color: ink }}>
-            {cur.cvr.toFixed(2)}%
-          </div>
-        </div>
-        <div>
-          <div style={{
-            fontFamily: mono, fontSize: 10, fontWeight: 500,
-            color: inkMuted, textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 8,
-          }}>
-            Improvement
-          </div>
-          <div style={{
-            fontFamily: mono, fontSize: 34, fontWeight: 700,
-            color: iter > 0 ? green : inkMuted,
-            transition: 'color 0.3s',
-          }}>
-            {iter > 0 ? `+${improvement}%` : '—'}
-          </div>
-        </div>
-      </div>
-
-      {/* Progress dots */}
-      <div style={{ display: 'flex', gap: 6, padding: '0 28px 24px' }}>
-        {VARIANTS.map((_, i) => (
-          <div
-            key={i}
-            style={{
-              flex: 1, height: 4, borderRadius: 2,
-              background: i <= iter ? copper : inkFaint,
-              transition: 'background 0.25s ease',
-            }}
-          />
         ))}
       </div>
     </div>
@@ -550,12 +430,6 @@ export default function Landing() {
             <ForgeLogo size={26} />
           </Link>
           <nav style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <Link to="/demo" style={{
-              fontFamily: font, fontSize: 14, fontWeight: 500,
-              color: inkMuted, textDecoration: 'none', padding: '8px 16px',
-            }}>
-              Demo
-            </Link>
             <Link to="/login" style={{
               fontFamily: font, fontSize: 14, fontWeight: 500,
               color: inkMuted, textDecoration: 'none', padding: '8px 16px',
@@ -592,27 +466,27 @@ export default function Landing() {
               marginBottom: 28,
             }}>
               <div style={{ width: 5, height: 5, borderRadius: '50%', background: copper }} />
-              PostHog-powered · AI agents · Real traffic
+              Autonomous A/B testing · Real users · Zero engineers
             </div>
 
             <h1 style={{
               fontFamily: serif,
-              fontSize: 56,
+              fontSize: 54,
               fontWeight: 400,
               lineHeight: 1.06,
-              letterSpacing: -1,
+              letterSpacing: '-0.5px',
               color: ink,
               marginBottom: 22,
             }}>
-              Autonomous A/B testing.<br />
-              <em style={{ fontStyle: 'italic', color: copper }}>Real users.</em> Real lift.
+              Define your metric,<br />
+              <em style={{ fontStyle: 'italic', color: copper }}>wake up to better.</em>
             </h1>
 
             <p style={{
-              fontSize: 16, lineHeight: 1.7, color: inkMuted,
-              marginBottom: 36, maxWidth: 440,
+              fontSize: 16, lineHeight: 1.72, color: inkMuted,
+              marginBottom: 36, maxWidth: 430,
             }}>
-              Connect PostHog. Forge agents run experiments on your live product — deploying variants as feature flags, measuring CVR on real users, keeping what wins.
+              Tell Forge what to optimize. AI agents run A/B tests on your live product overnight — deploying variants via PostHog feature flags, measuring on real users, keeping what wins automatically.
             </p>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 }}>
@@ -644,9 +518,9 @@ export default function Landing() {
             </div>
           </div>
 
-          {/* Right: terminal */}
+          {/* Right: dashboard preview */}
           <div>
-            <AgentTerminal />
+            <ForgeChartPreview />
           </div>
         </div>
       </section>
@@ -658,9 +532,9 @@ export default function Landing() {
           display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)',
         }}>
           {[
-            { value: '5',        label: 'templates ready' },
-            { value: '$0.0001',  label: 'per experiment' },
-            { value: 'Real CVR', label: 'measured by PostHog' },
+            { value: '5',        label: 'revenue surfaces covered' },
+            { value: '$0.0001',  label: 'per experiment run' },
+            { value: '24 hrs',   label: 'from idea to result' },
           ].map((s, i) => (
             <div key={i} style={{
               textAlign: 'center', padding: '0 28px',
@@ -702,8 +576,8 @@ export default function Landing() {
 
             {[
               {
-                num: '01', title: 'Connect PostHog',
-                desc: 'Add your API key. Forge reads your conversion events and builds a baseline metric for each template.',
+                num: '01', title: 'Connect your product',
+                desc: 'Add your PostHog key. Forge reads your real conversion events and sets a baseline — the number it will beat.',
                 icon: (
                   <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
                     <circle cx="4" cy="9" r="2.5" stroke={copper} strokeWidth="1.4" />
@@ -713,13 +587,13 @@ export default function Landing() {
                 ),
               },
               {
-                num: '02', title: 'Agents propose + deploy',
-                desc: 'AI agents generate hypotheses and deploy variants as PostHog feature flags — real 50/50 traffic split.',
+                num: '02', title: 'Agents run experiments',
+                desc: 'Every night, AI agents generate variants and deploy them to real users via feature flags — no code, no spreadsheets, no meetings.',
                 icon: <DiamondMark size={18} outerColor={ink} innerColor={copper} />,
               },
               {
-                num: '03', title: 'Winners kept automatically',
-                desc: 'After the window, Forge compares CVR. Better variants ship. Worse ones revert. You get the morning report.',
+                num: '03', title: 'You wake up to better',
+                desc: 'The winning variant ships. The losing one reverts. Your metrics moved overnight — no meeting, no analyst, no delay.',
                 icon: (
                   <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
                     <path d="M3 9.5l3.5 3.5 8-8" stroke={green} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -757,25 +631,43 @@ export default function Landing() {
       {/* ── Templates ── */}
       <section style={{ padding: '0 28px 100px' }}>
         <div style={{ maxWidth: 980, margin: '0 auto' }}>
-          <div style={{ textAlign: 'center', marginBottom: 48 }}>
-            <h2 style={{ fontFamily: serif, fontSize: 44, fontWeight: 400, color: ink, marginBottom: 12 }}>
-              Five surfaces. One loop.
+          <div style={{ marginBottom: 48 }}>
+            <h2 style={{ fontFamily: serif, fontSize: 44, fontWeight: 400, color: ink, marginBottom: 14 }}>
+              Every surface that<br />drives your revenue.
             </h2>
-            <p style={{ fontSize: 16, color: inkMuted }}>
-              Every template ships with a deterministic evaluator and PostHog flag payload.
+            <p style={{ fontSize: 16, color: inkMuted, maxWidth: 500, lineHeight: 1.7 }}>
+              Forge ships five pre-built optimization engines. Connect PostHog, pick a surface, and agents start improving it tonight — no engineers, no manual analysis.
             </p>
           </div>
 
-          {/* Top row: 3 cards */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14, marginBottom: 14 }}>
-            <TemplateCard name="Landing Page CRO"     desc="Headline, CTA copy, value props"      baseline="3.46%"  range="1–5% CVR" />
-            <TemplateCard name="Page Structure"        desc="Section order, hero placement"        baseline="3.72%"  range="via feature flags" />
-            <TemplateCard name="Onboarding Flow"       desc="Step count, field friction"           baseline="57.3%" range="30–65% completion" />
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 12 }}>
+            <TemplateCard
+              num="01" name="Landing Page CRO"
+              outcome="More anonymous visitors become signups. Forge finds the headline, CTA, and framing that converts — running experiments while you sleep."
+              tests="headline copy · CTA phrasing · value propositions · social proof placement"
+            />
+            <TemplateCard
+              num="02" name="Page Structure"
+              outcome="The order your sections appear changes everything. Forge tries layouts systematically until it finds the version real users respond to."
+              tests="section order · hero placement · navigation structure · above-the-fold content"
+            />
+            <TemplateCard
+              num="03" name="Onboarding Flow"
+              outcome="Most users who don't complete onboarding never come back. Forge removes friction one step at a time until completion rates climb."
+              tests="step count · form fields · progress indicators · copy at each stage"
+            />
           </div>
-          {/* Bottom row: 2 cards centred */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, maxWidth: 648, margin: '0 auto' }}>
-            <TemplateCard name="Pricing Page"          desc="Plan framing, CTA copy"               baseline="4.30%"  range="1.5–5% upgrade rate" />
-            <TemplateCard name="Feature Announcement"  desc="Banner position, badge style"         baseline="19.0%" range="8–28% adoption" />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, maxWidth: 660, margin: '0 auto' }}>
+            <TemplateCard
+              num="04" name="Pricing Page"
+              outcome="Small framing changes move users from free to paid. Forge tests how you present plans until more people upgrade."
+              tests="plan names · feature emphasis · CTA copy · pricing display format"
+            />
+            <TemplateCard
+              num="05" name="Feature Announcement"
+              outcome="Shipped features go unnoticed. Forge optimizes where, when, and how you surface new functionality until adoption actually moves."
+              tests="banner position · badge design · announcement copy · timing logic"
+            />
           </div>
         </div>
       </section>
@@ -819,10 +711,10 @@ export default function Landing() {
             fontFamily: serif, fontSize: 52, fontWeight: 400,
             color: white, marginBottom: 14,
           }}>
-            Start optimizing tonight.
+            Wake up to better.
           </h2>
           <p style={{ fontSize: 16, color: 'rgba(255,255,255,0.4)', marginBottom: 44 }}>
-            Set up in minutes. Agents run while you sleep.
+            Set up tonight. Agents run while you sleep. You just wake up to better results.
           </p>
           <Link to="/login" style={{
             display: 'inline-block',
@@ -863,6 +755,13 @@ export default function Landing() {
           0%, 100% { opacity: 1;   box-shadow: 0 0 7px rgba(16,185,129,0.55); }
           50%       { opacity: 0.5; box-shadow: 0 0 14px rgba(16,185,129,0.85); }
         }
+        @keyframes pulse-copper {
+          0%, 100% { opacity: 1;   box-shadow: 0 0 7px rgba(196,122,42,0.55); }
+          50%       { opacity: 0.5; box-shadow: 0 0 14px rgba(196,122,42,0.85); }
+        }
+        @keyframes draw-line {
+          to { stroke-dashoffset: 0; }
+        }
         @keyframes blink {
           0%, 100% { opacity: 1; }
           50%       { opacity: 0; }
@@ -872,8 +771,8 @@ export default function Landing() {
           50%       { opacity: 1;   transform: translateY(-4px); }
         }
         @keyframes fadein {
-          from { opacity: 0; transform: translateY(5px); }
-          to   { opacity: 1; transform: translateY(0); }
+          from { opacity: 0; }
+          to   { opacity: 1; }
         }
         @keyframes fill-bar {
           from { width: 0%; }

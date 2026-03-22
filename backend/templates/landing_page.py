@@ -36,7 +36,7 @@ class LandingPageTemplate(BaseTemplate):
 
 Your task: Generate ONE hypothesis for an experiment that could improve the conversion score of a landing page.
 
-CURRENT BEST CONFIG (score: {current_best.metric:.1f}/100):
+CURRENT BEST CONFIG (CVR: {current_best.metric*100:.2f}%):
 - headline: {current_best.config.get('headline', 'N/A')}
 - subheadline: {current_best.config.get('subheadline', 'N/A')}
 - cta_text: {current_best.config.get('cta_text', 'N/A')}
