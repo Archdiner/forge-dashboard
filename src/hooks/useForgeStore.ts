@@ -85,7 +85,7 @@ export interface CycleHistoryItem extends ActiveCycle {
   decision: 'kept' | 'reverted';
 }
 
-export function useForgeStore(templateId: TemplateId = 'landing-page-cro') {
+export function useForgeStore(templateId: TemplateId = 'landing-page-cro', projectId?: string) {
   const [experiments, setExperiments] = useState<Experiment[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [globalBest, setGlobalBest] = useState<GlobalBest | null>(null);
@@ -203,8 +203,11 @@ export function useForgeStore(templateId: TemplateId = 'landing-page-cro') {
   const fetchInitialData = useCallback(async () => {
     setIsLoading(true);
     try {
+      const historyUrl = projectId
+        ? `${API_BASE}/experiments/history/${templateId}?project_id=${projectId}`
+        : `${API_BASE}/experiments/history/${templateId}`;
       const [historyRes, agentsRes, bestRes] = await Promise.all([
-        fetch(`${API_BASE}/experiments/history/${templateId}`),
+        fetch(historyUrl),
         fetch(`${API_BASE}/agents`),
         fetch(`${API_BASE}/experiments/global-best/${templateId}`),
       ]);
@@ -238,9 +241,13 @@ export function useForgeStore(templateId: TemplateId = 'landing-page-cro') {
     } finally {
       setIsLoading(false);
     }
-  }, [templateId]);
+  }, [templateId, projectId]);
 
   useEffect(() => {
+    // Clear stale data immediately when project/template changes
+    setExperiments([]);
+    setGlobalBest(null);
+    setAgents([]);
     fetchInitialData();
     connectWebSocket();
 

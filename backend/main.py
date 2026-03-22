@@ -151,8 +151,10 @@ async def update_global_best(template_id: str, config: dict):
 
 
 @app.get("/experiments/history/{template_id}")
-async def get_experiment_history(template_id: str, limit: int = 50):
+async def get_experiment_history(template_id: str, limit: int = 50, project_id: Optional[str] = None):
     exps = store.get_all_experiments(template_id)
+    if project_id:
+        exps = [e for e in exps if e.agent_id.startswith(project_id)]
     return [e.model_dump() for e in exps[:limit]]
 
 

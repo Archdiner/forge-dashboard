@@ -688,7 +688,7 @@ export default function ProjectDetails() {
   }, [id]);
 
   const templateId = (projectData?.template_id || 'landing-page-cro') as TemplateId;
-  const store = useForgeStore(templateId);
+  const store = useForgeStore(templateId, id);
   const [isRunning, setIsRunning] = useState(false);
 
   const handleStop = async () => {
