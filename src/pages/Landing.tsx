@@ -466,7 +466,7 @@ export default function Landing() {
               marginBottom: 28,
             }}>
               <div style={{ width: 5, height: 5, borderRadius: '50%', background: copper }} />
-              Autonomous A/B testing · Real users · Zero engineers
+              AI-powered optimization · Set it and forget it
             </div>
 
             <h1 style={{
@@ -478,15 +478,15 @@ export default function Landing() {
               color: ink,
               marginBottom: 22,
             }}>
-              Define your metric,<br />
-              <em style={{ fontStyle: 'italic', color: copper }}>wake up to better.</em>
+              Your website, improved<br />
+              <em style={{ fontStyle: 'italic', color: copper }}>while you sleep.</em>
             </h1>
 
             <p style={{
               fontSize: 16, lineHeight: 1.72, color: inkMuted,
               marginBottom: 36, maxWidth: 430,
             }}>
-              Tell Forge what to optimize. AI agents run A/B tests on your live product overnight — deploying variants via PostHog feature flags, measuring on real users, keeping what wins automatically.
+              Tell Forge what you want to improve — more signups, more sales, more engagement. AI agents test different versions of your pages overnight and automatically keep what works best.
             </p>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 }}>
@@ -498,7 +498,7 @@ export default function Landing() {
                 boxShadow: '0 4px 22px rgba(196,122,42,0.32)',
                 transition: 'box-shadow 0.2s',
               }}>
-                Start experimenting
+                Start improving
               </Link>
               <Link to="/demo" style={{
                 fontFamily: font, fontSize: 15, fontWeight: 500,
@@ -514,7 +514,7 @@ export default function Landing() {
             </div>
 
             <div style={{ fontFamily: mono, fontSize: 11, color: inkMuted }}>
-              Free to start · ~$0.0001 per experiment
+              Free to start · No coding required
             </div>
           </div>
 
@@ -532,9 +532,9 @@ export default function Landing() {
           display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)',
         }}>
           {[
-            { value: '5',        label: 'revenue surfaces covered' },
-            { value: '$0.0001',  label: 'per experiment run' },
-            { value: '24 hrs',   label: 'from idea to result' },
+            { value: '5',        label: 'areas of your site optimized' },
+            { value: '0',        label: 'lines of code needed' },
+            { value: '24 hrs',   label: 'to see real results' },
           ].map((s, i) => (
             <div key={i} style={{
               textAlign: 'center', padding: '0 28px',
@@ -559,10 +559,10 @@ export default function Landing() {
         <div style={{ maxWidth: 980, margin: '0 auto' }}>
           <div style={{ textAlign: 'center', marginBottom: 64 }}>
             <h2 style={{ fontFamily: serif, fontSize: 44, fontWeight: 400, color: ink, marginBottom: 12 }}>
-              The loop. On repeat.
+              How Forge works.
             </h2>
             <p style={{ fontSize: 16, color: inkMuted, maxWidth: 420, margin: '0 auto' }}>
-              Forge runs your experimentation engine automatically, around the clock.
+              Three simple steps. No technical skills needed.
             </p>
           </div>
 
@@ -576,8 +576,8 @@ export default function Landing() {
 
             {[
               {
-                num: '01', title: 'Connect your product',
-                desc: 'Add your PostHog key. Forge reads your real conversion events and sets a baseline — the number it will beat.',
+                num: '01', title: 'Tell us your goal',
+                desc: 'Want more signups? More purchases? More clicks? Just describe what you want to improve and connect your website.',
                 icon: (
                   <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
                     <circle cx="4" cy="9" r="2.5" stroke={copper} strokeWidth="1.4" />
@@ -587,13 +587,13 @@ export default function Landing() {
                 ),
               },
               {
-                num: '02', title: 'Agents run experiments',
-                desc: 'Every night, AI agents generate variants and deploy them to real users via feature flags — no code, no spreadsheets, no meetings.',
+                num: '02', title: 'AI tests ideas overnight',
+                desc: 'While you sleep, Forge tries different versions of your headlines, buttons, and layouts — showing them to real visitors to see what performs best.',
                 icon: <DiamondMark size={18} outerColor={ink} innerColor={copper} />,
               },
               {
-                num: '03', title: 'You wake up to better',
-                desc: 'The winning variant ships. The losing one reverts. Your metrics moved overnight — no meeting, no analyst, no delay.',
+                num: '03', title: 'Wake up to better results',
+                desc: 'The best-performing version goes live automatically. You just check your dashboard in the morning and see the improvement.',
                 icon: (
                   <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
                     <path d="M3 9.5l3.5 3.5 8-8" stroke={green} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -633,40 +633,40 @@ export default function Landing() {
         <div style={{ maxWidth: 980, margin: '0 auto' }}>
           <div style={{ marginBottom: 48 }}>
             <h2 style={{ fontFamily: serif, fontSize: 44, fontWeight: 400, color: ink, marginBottom: 14 }}>
-              Every surface that<br />drives your revenue.
+              Five ways to grow<br />your business.
             </h2>
             <p style={{ fontSize: 16, color: inkMuted, maxWidth: 500, lineHeight: 1.7 }}>
-              Forge ships five pre-built optimization engines. Connect PostHog, pick a surface, and agents start improving it tonight — no engineers, no manual analysis.
+              Pick what you want to improve. Forge handles the rest — testing ideas, measuring what works, and making your site better every day.
             </p>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 12 }}>
             <TemplateCard
-              num="01" name="Landing Page CRO"
-              outcome="More anonymous visitors become signups. Forge finds the headline, CTA, and framing that converts — running experiments while you sleep."
-              tests="headline copy · CTA phrasing · value propositions · social proof placement"
+              num="01" name="Landing Page"
+              outcome="Turn more visitors into customers. Forge finds the best headlines, buttons, and messaging that get people to take action."
+              tests="headlines · button text · key messages · trust signals"
             />
             <TemplateCard
-              num="02" name="Page Structure"
-              outcome="The order your sections appear changes everything. Forge tries layouts systematically until it finds the version real users respond to."
-              tests="section order · hero placement · navigation structure · above-the-fold content"
+              num="02" name="Page Layout"
+              outcome="Where things appear on your page matters more than you think. Forge rearranges sections until it finds the layout that keeps visitors engaged."
+              tests="section order · content placement · navigation · what visitors see first"
             />
             <TemplateCard
-              num="03" name="Onboarding Flow"
-              outcome="Most users who don't complete onboarding never come back. Forge removes friction one step at a time until completion rates climb."
-              tests="step count · form fields · progress indicators · copy at each stage"
+              num="03" name="Signup Flow"
+              outcome="Most people who start signing up never finish. Forge simplifies the process step by step until more people make it through."
+              tests="number of steps · form fields · progress bars · instructions at each step"
             />
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, maxWidth: 660, margin: '0 auto' }}>
             <TemplateCard
               num="04" name="Pricing Page"
-              outcome="Small framing changes move users from free to paid. Forge tests how you present plans until more people upgrade."
-              tests="plan names · feature emphasis · CTA copy · pricing display format"
+              outcome="How you present your prices changes whether people buy. Forge tests different ways to show your plans until more visitors become paying customers."
+              tests="plan names · what features to highlight · button text · how prices are displayed"
             />
             <TemplateCard
-              num="05" name="Feature Announcement"
-              outcome="Shipped features go unnoticed. Forge optimizes where, when, and how you surface new functionality until adoption actually moves."
-              tests="banner position · badge design · announcement copy · timing logic"
+              num="05" name="New Feature Announcements"
+              outcome="You built something great but nobody notices. Forge figures out the best way to tell your users about new features so they actually try them."
+              tests="banner placement · badge design · announcement wording · when to show it"
             />
           </div>
         </div>
@@ -677,10 +677,10 @@ export default function Landing() {
         <div style={{ maxWidth: 980, margin: '0 auto' }}>
           <div style={{ textAlign: 'center', marginBottom: 52 }}>
             <h2 style={{ fontFamily: serif, fontSize: 44, fontWeight: 400, color: ink, marginBottom: 12 }}>
-              See it run.
+              See it in action.
             </h2>
             <p style={{ fontSize: 16, color: inkMuted }}>
-              Hit the button. Watch CVR move. This is what your agents do while you sleep.
+              Click the button to watch Forge test different headlines and find the one that gets more people to convert.
             </p>
           </div>
           <GrowthDemo />
@@ -711,10 +711,10 @@ export default function Landing() {
             fontFamily: serif, fontSize: 52, fontWeight: 400,
             color: white, marginBottom: 14,
           }}>
-            Wake up to better.
+            Ready to grow?
           </h2>
           <p style={{ fontSize: 16, color: 'rgba(255,255,255,0.4)', marginBottom: 44 }}>
-            Set up tonight. Agents run while you sleep. You just wake up to better results.
+            Set it up in minutes. Forge works overnight. Wake up to a better-performing website.
           </p>
           <Link to="/login" style={{
             display: 'inline-block',
@@ -742,7 +742,7 @@ export default function Landing() {
             <ForgeLogo size={22} />
           </Link>
           <span style={{ fontFamily: mono, fontSize: 11, color: inkMuted }}>
-            Autonomous variant optimization
+            AI that improves your website overnight
           </span>
           <Link to="/login" style={{ fontSize: 13, color: inkMuted, textDecoration: 'none' }}>
             Sign in
