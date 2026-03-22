@@ -1,826 +1,885 @@
 import { Link } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 
-const font = `'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif`;
-const mono = `'JetBrains Mono', monospace`;
-const serif = `'Instrument Serif', Georgia, serif`;
+// ── Design tokens ──────────────────────────────────────────────
+const font   = `'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif`;
+const mono   = `'JetBrains Mono', monospace`;
+const serif  = `'Instrument Serif', Georgia, serif`;
+const copper      = '#C47A2A';
+const copperDim   = 'rgba(196,122,42,0.12)';
+const copperBorder= 'rgba(196,122,42,0.28)';
+const ink         = '#1A1614';
+const inkMuted    = 'rgba(26,22,20,0.45)';
+const inkFaint    = 'rgba(26,22,20,0.1)';
+const cream       = '#FAF8F5';
+const green       = '#10B981';
+const greenDim    = 'rgba(16,185,129,0.12)';
+const dark        = '#161514';
+const white       = '#FFFFFF';
 
-const copper = '#C47A2A';
-const copperLight = '#D4953D';
-const ink = '#1A1614';
-const inkMuted = 'rgba(26, 22, 20, 0.4)';
-const inkLight = 'rgba(26, 22, 20, 0.25)';
-const cream = '#FAF8F5';
-
-// ============================================================
-// DEMO: Portfolio Optimization
-// ============================================================
-function PortfolioDemo() {
-    const [running, setRunning] = useState(false);
-    const [iter, setIter] = useState(0);
-    const [sharpe, setSharpe] = useState(1.12);
-    const [weights, setWeights] = useState({ US: 40, EU: 30, EM: 20, Bonds: 10 });
-    
-    useEffect(() => {
-        if (!running) return;
-        const interval = setInterval(() => {
-            setIter(i => {
-                if (i >= 12) { setRunning(false); return i; }
-                setSharpe(s => +(s + (Math.random() * 0.04 + 0.02)).toFixed(2));
-                setWeights({
-                    US: Math.max(15, +(40 + (Math.random() - 0.5) * 10).toFixed(1)),
-                    EU: Math.max(15, +(30 + (Math.random() - 0.5) * 8).toFixed(1)),
-                    EM: Math.max(10, +(20 + (Math.random() - 0.5) * 6).toFixed(1)),
-                    Bonds: Math.max(5, +(10 + (Math.random() - 0.5) * 3).toFixed(1)),
-                });
-                return i + 1;
-            });
-        }, 100);
-        return () => clearInterval(interval);
-    }, [running]);
-
-    const total = Object.values(weights).reduce((a, b) => a + b, 0);
-    const normalized = Object.fromEntries(Object.entries(weights).map(([k, v]) => [k, v / total * 100]));
-
-    return (
-        <div style={{ background: '#FFF', border: '1px solid rgba(26,22,20,0.08)', borderRadius: 24, padding: 32, boxShadow: '0 30px 70px -20px rgba(0,0,0,0.06)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#10B981', animation: 'pulse 1.5s ease-in-out infinite' }}></div>
-                    <span style={{ fontSize: 15, fontWeight: 600, color: ink }}>Portfolio Optimizer</span>
-                </div>
-                <button 
-                    onClick={() => { setRunning(true); setIter(0); setSharpe(1.12); }}
-                    disabled={running}
-                    style={{
-                        padding: '10px 20px',
-                        fontSize: 13,
-                        fontWeight: 600,
-                        fontFamily: font,
-                        background: running ? copper : 'transparent',
-                        color: running ? '#FFF' : copper,
-                        border: `1.5px solid ${copper}`,
-                        borderRadius: 8,
-                        cursor: running ? 'not-allowed' : 'pointer',
-                        transition: 'all 0.2s',
-                    }}
-                >
-                    {running ? 'Optimizing...' : 'Run Optimization'}
-                </button>
-            </div>
-            
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24 }}>
-                <div style={{ background: cream, borderRadius: 12, padding: 20 }}>
-                    <div style={{ fontSize: 11, fontWeight: 500, color: inkMuted, textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 8 }}>Sharpe Ratio</div>
-                    <div style={{ fontSize: 36, fontWeight: 700, fontFamily: mono, color: '#10B981' }}>{sharpe.toFixed(2)}</div>
-                </div>
-                <div style={{ background: cream, borderRadius: 12, padding: 20 }}>
-                    <div style={{ fontSize: 11, fontWeight: 500, color: inkMuted, textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 8 }}>Variants Tested</div>
-                    <div style={{ fontSize: 36, fontWeight: 700, fontFamily: mono, color: ink }}>{iter * 83}</div>
-                </div>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                {Object.entries(normalized).map(([asset, pct]) => (
-                    <div key={asset} style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                        <span style={{ fontSize: 13, color: inkMuted, width: 50, fontWeight: 500 }}>{asset}</span>
-                        <div style={{ flex: 1, height: 8, background: cream, borderRadius: 4, overflow: 'hidden' }}>
-                            <div 
-                                style={{
-                                    height: '100%',
-                                    width: `${pct}%`,
-                                    background: `linear-gradient(to right, ${copper}, ${copperLight})`,
-                                    borderRadius: 4,
-                                    transition: 'width 0.3s ease',
-                                }}
-                            ></div>
-                        </div>
-                        <span style={{ fontSize: 14, fontWeight: 700, fontFamily: mono, width: 42, textAlign: 'right' }}>{pct.toFixed(0)}%</span>
-                    </div>
-                ))}
-            </div>
-        </div>
-    );
+// ── Logo ──────────────────────────────────────────────────────
+function DiamondMark({
+  size = 32,
+  outerColor = ink,
+  innerColor = copper,
+}: {
+  size?: number;
+  outerColor?: string;
+  innerColor?: string;
+}) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 32 32"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      style={{ display: 'block', flexShrink: 0 }}
+    >
+      <polygon points="16,1 31,16 16,31 1,16" fill={outerColor} />
+      <polygon points="16,8 24,16 16,24 8,16" fill={innerColor} />
+    </svg>
+  );
 }
 
-// ============================================================
-// DEMO: Landing Page / Growth
-// ============================================================
-function GrowthDemo() {
-    const [running, setRunning] = useState(false);
-    const [iter, setIter] = useState(0);
-    const [headline, setHeadline] = useState("Save time and money");
-    const [conversion, setConversion] = useState(3.2);
-    
-    const headlines = [
-        { text: "Save time and money", conv: 3.2 },
-        { text: "Stop wasting hours every week", conv: 3.8 },
-        { text: "Save 10x more starting today", conv: 4.4 },
-        { text: "Work smarter, not harder", conv: 5.1 },
-        { text: "Ship 10x faster tonight", conv: 5.8 },
-    ];
-
-    useEffect(() => {
-        if (!running) return;
-        const interval = setInterval(() => {
-            setIter(i => {
-                if (i >= 4) { setRunning(false); return i; }
-                setHeadline(headlines[i + 1].text);
-                setConversion(headlines[i + 1].conv);
-                return i + 1;
-            });
-        }, 500);
-        return () => clearInterval(interval);
-    }, [running]);
-
-    const improvement = ((conversion - 3.2) / 3.2 * 100).toFixed(0);
-
-    return (
-        <div style={{ background: '#FFF', border: '1px solid rgba(26,22,20,0.08)', borderRadius: 24, padding: 32, boxShadow: '0 30px 70px -20px rgba(0,0,0,0.06)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#8B5CF6', animation: 'pulse 1.5s ease-in-out infinite' }}></div>
-                    <span style={{ fontSize: 15, fontWeight: 600, color: ink }}>Landing Page CRO</span>
-                </div>
-                <button 
-                    onClick={() => { setRunning(true); setIter(0); setHeadline("Save time and money"); setConversion(3.2); }}
-                    disabled={running}
-                    style={{
-                        padding: '10px 20px',
-                        fontSize: 13,
-                        fontWeight: 600,
-                        fontFamily: font,
-                        background: running ? '#8B5CF6' : 'transparent',
-                        color: running ? '#FFF' : '#8B5CF6',
-                        border: `1.5px solid #8B5CF6`,
-                        borderRadius: 8,
-                        cursor: running ? 'not-allowed' : 'pointer',
-                        transition: 'all 0.2s',
-                    }}
-                >
-                    {running ? 'Testing...' : 'Test Variants'}
-                </button>
-            </div>
-
-            <div style={{ background: cream, borderRadius: 12, padding: 24, marginBottom: 20, border: '1px solid rgba(26,22,20,0.05)' }}>
-                <div style={{ fontSize: 11, fontWeight: 500, color: inkMuted, textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 10 }}>Headline</div>
-                <div style={{ fontSize: 24, fontWeight: 700, color: ink }}>{headline}</div>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                <div style={{ background: cream, borderRadius: 12, padding: 20 }}>
-                    <div style={{ fontSize: 11, fontWeight: 500, color: inkMuted, textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 8 }}>Conversion</div>
-                    <div style={{ fontSize: 36, fontWeight: 700, fontFamily: mono, color: ink }}>{conversion.toFixed(1)}%</div>
-                </div>
-                <div style={{ background: 'rgba(16,185,129,0.1)', borderRadius: 12, padding: 20, border: '1px solid rgba(16,185,129,0.2)' }}>
-                    <div style={{ fontSize: 11, fontWeight: 500, color: '#10B981', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 8 }}>Improvement</div>
-                    <div style={{ fontSize: 36, fontWeight: 700, fontFamily: mono, color: '#10B981' }}>+{improvement}%</div>
-                </div>
-            </div>
-
-            <div style={{ display: 'flex', gap: 6, marginTop: 20 }}>
-                {headlines.map((_, i) => (
-                    <div 
-                        key={i} 
-                        style={{
-                            flex: 1,
-                            height: 6,
-                            borderRadius: 3,
-                            background: i <= iter ? '#8B5CF6' : 'rgba(26,22,20,0.08)',
-                            transition: 'background 0.3s ease',
-                        }}
-                    />
-                ))}
-            </div>
-        </div>
-    );
+function ForgeLogo({ size = 28, light = false }: { size?: number; light?: boolean }) {
+  const nameColor = light ? 'rgba(255,255,255,0.9)' : ink;
+  const outerColor = light ? 'rgba(255,255,255,0.9)' : ink;
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: Math.round(size * 0.32) }}>
+      <DiamondMark size={size} outerColor={outerColor} innerColor={copper} />
+      <span style={{
+        fontFamily: mono,
+        fontSize: Math.round(size * 0.57),
+        fontWeight: 600,
+        color: nameColor,
+        letterSpacing: '-0.03em',
+        lineHeight: 1,
+      }}>
+        forge
+      </span>
+    </div>
+  );
 }
 
-// ============================================================
-// DEMO: Email
-// ============================================================
-function EmailDemo() {
-    const [running, setRunning] = useState(false);
-    const [iter, setIter] = useState(0);
-    const [subject, setSubject] = useState("Quick question for you");
-    const [score, setScore] = useState(62);
+// ── Agent Terminal ─────────────────────────────────────────────
+const EXPERIMENTS = [
+  {
+    hypothesis: 'Question-format headline creates stronger curiosity gap',
+    mutation: '"Want to 10x your CVR tonight?"',
+    result: 3.89,
+    diff: '+0.43pp',
+  },
+  {
+    hypothesis: 'Social proof count increases trust signal above fold',
+    mutation: '"2,847 teams already optimizing"',
+    result: 4.01,
+    diff: '+0.55pp',
+  },
+  {
+    hypothesis: 'Frictionless CTA copy reduces commitment anxiety',
+    mutation: '"Start Free — No Card Needed"',
+    result: 3.74,
+    diff: '+0.28pp',
+  },
+];
 
-    const subjects = [
-        { text: "Quick question for you", score: 62 },
-        { text: "Can I help you with something?", score: 71 },
-        { text: "{{first_name}}, have you seen this?", score: 79 },
-        { text: "{{first_name}}, one idea for you", score: 86 },
-        { text: "{{first_name}}, your competitors are doing this", score: 92 },
-    ];
+// phase: 0=idle 1=thinking 2=hypothesis 3=deploying 4=measuring 5=result 6=kept
+const DURATIONS = [500, 1100, 1500, 900, 1900, 1500, 1300];
 
-    useEffect(() => {
-        if (!running) return;
-        const interval = setInterval(() => {
-            setIter(i => {
-                if (i >= 4) { setRunning(false); return i; }
-                setSubject(subjects[i + 1].text);
-                setScore(subjects[i + 1].score);
-                return i + 1;
-            });
-        }, 450);
-        return () => clearInterval(interval);
-    }, [running]);
+function AgentTerminal() {
+  const [cycle, setCycle]           = useState(0);
+  const [phase, setPhase]           = useState(0);
+  const [typed, setTyped]           = useState('');
+  const [sessions, setSessions]     = useState(0);
+  const [measuredCvr, setMeasured]  = useState(3.46);
 
-    return (
-        <div style={{ background: '#FFF', border: '1px solid rgba(26,22,20,0.08)', borderRadius: 24, padding: 32, boxShadow: '0 30px 70px -20px rgba(0,0,0,0.06)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#8B5CF6', animation: 'pulse 1.5s ease-in-out infinite' }}></div>
-                    <span style={{ fontSize: 15, fontWeight: 600, color: ink }}>Email Outreach</span>
-                </div>
-                <button 
-                    onClick={() => { setRunning(true); setIter(0); setSubject("Quick question for you"); setScore(62); }}
-                    disabled={running}
-                    style={{
-                        padding: '10px 20px',
-                        fontSize: 13,
-                        fontWeight: 600,
-                        fontFamily: font,
-                        background: running ? '#8B5CF6' : 'transparent',
-                        color: running ? '#FFF' : '#8B5CF6',
-                        border: `1.5px solid #8B5CF6`,
-                        borderRadius: 8,
-                        cursor: running ? 'not-allowed' : 'pointer',
-                        transition: 'all 0.2s',
-                    }}
-                >
-                    {running ? 'Optimizing...' : 'Optimize'}
-                </button>
-            </div>
+  const exp = EXPERIMENTS[cycle % EXPERIMENTS.length];
+  const termMuted  = 'rgba(255,255,255,0.32)';
+  const termText   = 'rgba(255,255,255,0.82)';
+  const termBg     = '#0D0C0B';
 
-            <div style={{ background: cream, borderRadius: 12, padding: 20, marginBottom: 20, border: '1px solid rgba(26,22,20,0.05)' }}>
-                <div style={{ fontSize: 11, fontWeight: 500, color: inkMuted, textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 10 }}>Subject Line</div>
-                <div style={{ fontSize: 18, fontWeight: 600, color: ink }}>{subject}</div>
-            </div>
+  // Phase advancement
+  useEffect(() => {
+    const t = setTimeout(() => {
+      if (phase < 6) {
+        setPhase(p => p + 1);
+      } else {
+        setCycle(c => c + 1);
+        setPhase(0);
+        setMeasured(3.46);
+        setSessions(0);
+        setTyped('');
+      }
+    }, DURATIONS[phase]);
+    return () => clearTimeout(t);
+  }, [phase, cycle]);
 
-            <div style={{ marginBottom: 20 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, fontWeight: 500, color: inkMuted, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
-                    <span>Engagement</span>
-                    <span style={{ fontFamily: mono }}>{score}</span>
-                </div>
-                <div style={{ height: 10, background: cream, borderRadius: 5, overflow: 'hidden' }}>
-                    <div 
-                        style={{
-                            height: '100%',
-                            width: `${score}%`,
-                            background: '#8B5CF6',
-                            borderRadius: 5,
-                            transition: 'width 0.3s ease',
-                        }}
-                    ></div>
-                </div>
-            </div>
+  // Typewriter
+  useEffect(() => {
+    if (phase !== 2) return;
+    setTyped('');
+    let i = 0;
+    const str = exp.hypothesis;
+    const iv = setInterval(() => {
+      if (i < str.length) { setTyped(str.slice(0, i + 1)); i++; }
+      else clearInterval(iv);
+    }, 24);
+    return () => clearInterval(iv);
+  }, [phase, cycle]);
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
-                {[
-                    { label: 'Spam', value: Math.max(5, 15 - iter * 2) },
-                    { label: 'Brevity', value: 50 + iter * 10 },
-                    { label: 'Personal', value: subject.includes('{{') ? 92 : 12 },
-                ].map((stat, i) => (
-                    <div key={i} style={{ background: cream, borderRadius: 8, padding: 14, textAlign: 'center' }}>
-                        <div style={{ fontSize: 10, fontWeight: 500, color: inkMuted, textTransform: 'uppercase', marginBottom: 4 }}>{stat.label}</div>
-                        <div style={{ fontSize: 20, fontWeight: 700, color: '#10B981', fontFamily: mono }}>{stat.value}%</div>
-                    </div>
-                ))}
-            </div>
+  // Session counter
+  useEffect(() => {
+    if (phase !== 4) return;
+    let n = 0;
+    const target = 1247;
+    const iv = setInterval(() => {
+      n = Math.min(n + 42, target);
+      setSessions(n);
+      if (n >= target) clearInterval(iv);
+    }, 60);
+    return () => clearInterval(iv);
+  }, [phase]);
+
+  // CVR animation
+  useEffect(() => {
+    if (phase !== 5) return;
+    let cur = 3.46;
+    const target = exp.result;
+    const step = (target - cur) / 36;
+    const iv = setInterval(() => {
+      cur = Math.min(cur + step, target);
+      setMeasured(+cur.toFixed(4));
+      if (cur >= target) clearInterval(iv);
+    }, 30);
+    return () => clearInterval(iv);
+  }, [phase, cycle]);
+
+  return (
+    <div style={{
+      background: termBg,
+      borderRadius: 18,
+      overflow: 'hidden',
+      border: '1px solid rgba(255,255,255,0.07)',
+      boxShadow: '0 40px 80px -20px rgba(0,0,0,0.55), 0 0 0 1px rgba(0,0,0,0.3)',
+      fontFamily: mono,
+      fontSize: 12,
+    }}>
+      {/* Title bar */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 10,
+        padding: '13px 20px',
+        borderBottom: '1px solid rgba(255,255,255,0.06)',
+        background: 'rgba(255,255,255,0.02)',
+      }}>
+        <div style={{
+          width: 8, height: 8, borderRadius: '50%',
+          background: green,
+          boxShadow: `0 0 10px ${green}70`,
+          animation: 'pulse-green 2s ease-in-out infinite',
+        }} />
+        <span style={{ color: termText, fontWeight: 500 }}>Forge Agent</span>
+        <span style={{ color: termMuted }}>· running</span>
+        <div style={{ marginLeft: 'auto' }}>
+          <span style={{
+            background: copperDim, border: `1px solid ${copperBorder}`,
+            color: copper, borderRadius: 5, padding: '2px 10px',
+            fontSize: 10, letterSpacing: 0.6, fontWeight: 500,
+          }}>
+            landing-page-cro
+          </span>
         </div>
-    );
-}
+      </div>
 
-// ============================================================
-// DEMO: AI Prompts
-// ============================================================
-function PromptDemo() {
-    const [running, setRunning] = useState(false);
-    const [iter, setIter] = useState(0);
-    const [accuracy, setAccuracy] = useState(67);
-    const [prompt, setPrompt] = useState("Classify this email");
+      {/* Body */}
+      <div style={{ padding: '22px 22px 18px' }}>
+        {/* Baseline row — always visible */}
+        <div style={{
+          display: 'flex', justifyContent: 'space-between',
+          marginBottom: 20, paddingBottom: 16,
+          borderBottom: '1px solid rgba(255,255,255,0.06)',
+        }}>
+          <span style={{ color: termMuted, fontSize: 10, textTransform: 'uppercase', letterSpacing: 1 }}>Baseline CVR</span>
+          <span style={{ color: termText }}>3.46%</span>
+        </div>
 
-    const prompts = [
-        { text: "Classify this email", acc: 67 },
-        { text: "Classify this email as spam or not", acc: 74 },
-        { text: "Given an email, classify as spam or not based on content, sender, subject", acc: 82 },
-        { text: "You are an email classifier. Analyze sender, subject, body. Classify as 'spam' or 'not_spam'. Be strict.", acc: 91 },
-    ];
+        {/* Phase content — fixed height container */}
+        <div style={{ minHeight: 188 }}>
 
-    useEffect(() => {
-        if (!running) return;
-        const interval = setInterval(() => {
-            setIter(i => {
-                if (i >= 3) { setRunning(false); return i; }
-                setPrompt(prompts[i + 1].text);
-                setAccuracy(prompts[i + 1].acc);
-                return i + 1;
-            });
-        }, 600);
-        return () => clearInterval(interval);
-    }, [running]);
+          {/* 0: idle */}
+          {phase === 0 && (
+            <div style={{ color: termMuted, animation: 'fadein 0.25s ease' }}>
+              Initialising
+              <span style={{ animation: 'blink 1s step-end infinite' }}>_</span>
+            </div>
+          )}
 
-    return (
-        <div style={{ background: '#FFF', border: '1px solid rgba(26,22,20,0.08)', borderRadius: 24, padding: 32, boxShadow: '0 30px 70px -20px rgba(0,0,0,0.06)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#10B981', animation: 'pulse 1.5s ease-in-out infinite' }}></div>
-                    <span style={{ fontSize: 15, fontWeight: 600, color: ink }}>Prompt Engineering</span>
+          {/* 1: thinking */}
+          {phase === 1 && (
+            <div style={{ animation: 'fadein 0.25s ease' }}>
+              <div style={{ color: termMuted, marginBottom: 14, fontSize: 11 }}>Generating hypothesis...</div>
+              <div style={{ display: 'flex', gap: 5 }}>
+                {[0, 1, 2].map(i => (
+                  <div key={i} style={{
+                    width: 6, height: 6, borderRadius: '50%', background: copper,
+                    animation: `bounce-dot 1.2s ease-in-out ${i * 0.18}s infinite`,
+                  }} />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 2+: hypothesis */}
+          {phase >= 2 && (
+            <div style={{ animation: 'fadein 0.25s ease', marginBottom: 16 }}>
+              <div style={{ color: termMuted, fontSize: 10, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>
+                Hypothesis
+              </div>
+              <div style={{ color: termText, lineHeight: 1.55, fontSize: 13 }}>
+                {phase === 2 ? typed : exp.hypothesis}
+                {phase === 2 && (
+                  <span style={{ animation: 'blink 0.75s step-end infinite' }}>_</span>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* 3+: PostHog payload */}
+          {phase >= 3 && (
+            <div style={{ animation: 'fadein 0.3s ease', marginBottom: 16 }}>
+              <div style={{ color: termMuted, fontSize: 10, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>
+                PostHog flag payload
+              </div>
+              <div style={{
+                background: 'rgba(255,255,255,0.04)',
+                border: '1px solid rgba(255,255,255,0.08)',
+                borderRadius: 8, padding: '10px 14px',
+                fontSize: 11, lineHeight: 1.7,
+              }}>
+                <span style={{ color: 'rgba(196,122,42,0.85)' }}>{'{ '}</span>
+                <span style={{ color: 'rgba(147,197,253,0.8)' }}>"variant"</span>
+                <span style={{ color: termMuted }}>: </span>
+                <span style={{ color: 'rgba(134,239,172,0.85)' }}>"{exp.mutation}"</span>
+                <span style={{ color: 'rgba(196,122,42,0.85)' }}>{' }'}</span>
+              </div>
+              {phase === 3 && (
+                <div style={{ color: termMuted, marginTop: 10, fontSize: 11 }}>
+                  Deploying to PostHog A/B split...
                 </div>
-                <button 
-                    onClick={() => { setRunning(true); setIter(0); setPrompt("Classify this email"); setAccuracy(67); }}
-                    disabled={running}
-                    style={{
-                        padding: '10px 20px',
-                        fontSize: 13,
-                        fontWeight: 600,
-                        fontFamily: font,
-                        background: running ? '#10B981' : 'transparent',
-                        color: running ? '#FFF' : '#10B981',
-                        border: `1.5px solid #10B981`,
-                        borderRadius: 8,
-                        cursor: running ? 'not-allowed' : 'pointer',
-                        transition: 'all 0.2s',
-                    }}
-                >
-                    {running ? 'Tuning...' : 'Tune Prompt'}
-                </button>
+              )}
             </div>
+          )}
 
-            <div style={{ background: ink, borderRadius: 12, padding: 20, marginBottom: 24 }}>
-                <div style={{ fontSize: 11, fontWeight: 500, color: inkMuted, textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 10 }}>System Prompt</div>
-                <div style={{ fontSize: 14, fontFamily: mono, color: '#10B981', lineHeight: 1.7 }}>{prompt}</div>
+          {/* 4: measuring */}
+          {phase === 4 && (
+            <div style={{ animation: 'fadein 0.25s ease' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
+                <span style={{ color: termMuted, fontSize: 10, textTransform: 'uppercase', letterSpacing: 1 }}>
+                  Measuring
+                </span>
+                <span style={{ color: termText }}>
+                  {sessions.toLocaleString()} sessions
+                </span>
+              </div>
+              <div style={{ height: 3, background: 'rgba(255,255,255,0.07)', borderRadius: 2, overflow: 'hidden' }}>
+                <div style={{
+                  height: '100%', background: copper, borderRadius: 2,
+                  animation: 'fill-bar 1.9s cubic-bezier(0.25,0.1,0.25,1) forwards',
+                }} />
+              </div>
             </div>
+          )}
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 20 }}>
+          {/* 5+: result */}
+          {phase >= 5 && (
+            <div style={{ animation: 'fadein 0.35s ease' }}>
+              <div style={{
+                display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end',
+                padding: '14px 0 10px',
+                borderTop: '1px solid rgba(255,255,255,0.07)',
+              }}>
                 <div>
-                    <div style={{ fontSize: 11, fontWeight: 500, color: inkMuted, textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 8 }}>Accuracy</div>
-                    <div style={{ fontSize: 40, fontWeight: 700, fontFamily: mono, color: '#10B981' }}>{accuracy}%</div>
+                  <div style={{ color: termMuted, fontSize: 10, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>
+                    Measured CVR
+                  </div>
+                  <div style={{ fontSize: 32, fontWeight: 700, color: white, fontVariantNumeric: 'tabular-nums' }}>
+                    {measuredCvr.toFixed(2)}%
+                  </div>
                 </div>
                 <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontSize: 11, fontWeight: 500, color: inkMuted, textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 8 }}>Consistency</div>
-                    <div style={{ fontSize: 40, fontWeight: 700, fontFamily: mono, color: ink }}>{Math.min(99, 72 + iter * 7)}%</div>
+                  <div style={{ color: termMuted, fontSize: 10, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>
+                    Lift
+                  </div>
+                  <div style={{ fontSize: 22, fontWeight: 700, color: green }}>
+                    {exp.diff}
+                  </div>
                 </div>
+              </div>
             </div>
+          )}
 
-            <div style={{ display: 'flex', gap: 6 }}>
-                {prompts.map((_, i) => (
-                    <div 
-                        key={i} 
-                        style={{
-                            flex: 1,
-                            height: 6,
-                            borderRadius: 3,
-                            background: i <= iter ? '#10B981' : 'rgba(26,22,20,0.08)',
-                            transition: 'background 0.3s ease',
-                        }}
-                    />
-                ))}
-            </div>
-        </div>
-    );
-}
-
-// ============================================================
-// MARQUEE COMPONENT (CSS only animation)
-// ============================================================
-function Marquee() {
-    const items = [
-        'Meta Ads',
-        'Google Ads',
-        'Landing Pages',
-        'Email Subject Lines',
-        'Push Notifications',
-        'SMS Campaigns',
-        'Product Descriptions',
-        'SEO Titles',
-    ];
-    
-    return (
-        <div style={{ 
-            overflow: 'hidden', 
-            background: 'rgba(255,255,255,0.4)', 
-            padding: '24px 0',
-            maskImage: 'linear-gradient(to right, transparent, black 15%, black 85%, transparent)',
-            WebkitMaskImage: 'linear-gradient(to right, transparent, black 15%, black 85%, transparent)',
-        }}>
-            <div style={{ 
-                display: 'flex', 
-                gap: '2rem',
-                animation: 'marquee-scroll 20s linear infinite',
-                width: 'fit-content',
+          {/* 6: kept */}
+          {phase === 6 && (
+            <div style={{
+              animation: 'fadein 0.25s ease',
+              display: 'flex', alignItems: 'center', gap: 8,
+              marginTop: 10, padding: '9px 14px',
+              background: greenDim,
+              border: '1px solid rgba(16,185,129,0.22)',
+              borderRadius: 8,
             }}>
-                {[...items, ...items, ...items].map((item, i) => (
-                    <div 
-                        key={i}
-                        style={{
-                            background: '#FFF',
-                            height: 56,
-                            padding: '0 32px',
-                            borderRadius: 28,
-                            border: '1px solid rgba(26,22,20,0.1)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 12,
-                            whiteSpace: 'nowrap',
-                            fontSize: 14,
-                            fontWeight: 500,
-                            color: ink,
-                            boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
-                            cursor: 'default',
-                            transition: 'border-color 0.2s',
-                        }}
-                        onMouseEnter={e => e.currentTarget.style.borderColor = `${copper}50`}
-                        onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(26,22,20,0.1)'}
-                    >
-                        <span style={{ color: copper, fontSize: 16 }}>+</span> {item}
-                    </div>
-                ))}
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                <path d="M2 6.5l2.5 2.5 5.5-5.5" stroke={green} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              <span style={{ color: green, fontSize: 11, fontWeight: 500 }}>
+                Winner kept · Cycle {cycle + 1} complete
+              </span>
             </div>
+          )}
         </div>
-    );
+      </div>
+
+      {/* Status bar */}
+      <div style={{
+        padding: '10px 22px',
+        borderTop: '1px solid rgba(255,255,255,0.05)',
+        display: 'flex', justifyContent: 'space-between',
+        background: 'rgba(255,255,255,0.015)',
+      }}>
+        <span style={{ color: termMuted, fontSize: 10 }}>forge · simulation mode</span>
+        <span style={{ color: termMuted, fontSize: 10 }}>cycle {cycle + 1} of ∞</span>
+      </div>
+    </div>
+  );
 }
 
-// ============================================================
-// MAIN LANDING PAGE
-// ============================================================
-
-export default function Landing() {
-    const [activeTab, setActiveTab] = useState(0);
-    
-    const tabs = [
-        { id: 'growth', label: 'Landing Pages', component: <GrowthDemo /> },
-        { id: 'email', label: 'Email', component: <EmailDemo /> },
-        { id: 'portfolio', label: 'Portfolio', component: <PortfolioDemo /> },
-        { id: 'prompt', label: 'AI Prompts', component: <PromptDemo /> },
-    ];
-
-    return (
-        <div style={{ minHeight: '100vh', background: cream, fontFamily: font, color: ink }}>
-            {/* Dot Pattern Background */}
-            <div 
-                style={{ 
-                    position: 'fixed', 
-                    top: 0, 
-                    left: 0, 
-                    right: 0, 
-                    bottom: 0, 
-                    backgroundImage: 'radial-gradient(circle, rgba(26,22,20,0.08) 1px, transparent 1px)',
-                    backgroundSize: '24px 24px',
-                    pointerEvents: 'none',
-                    zIndex: 0,
-                }}
-            />
-            
-            {/* Ambient Glow */}
-            <div style={{ position: 'fixed', top: -200, right: -100, width: 600, height: 600, background: 'radial-gradient(circle, rgba(196,122,42,0.06) 0%, transparent 70%)', pointerEvents: 'none', zIndex: 0 }}></div>
-
-            {/* Header */}
-            <header style={{ maxWidth: 1100, margin: '0 auto', padding: '24px 24px 0', position: 'relative', zIndex: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Link to="/" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 10 }}>
-                    {/* Diamond Logo */}
-                    <div style={{ 
-                        width: 28, 
-                        height: 28, 
-                        background: ink, 
-                        borderRadius: 4,
-                        transform: 'rotate(45deg)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
-                    }}>
-                        <div style={{ 
-                            width: 10, 
-                            height: 10, 
-                            background: copper, 
-                            borderRadius: 2,
-                            boxShadow: '0 0 8px rgba(196,122,42,0.5)',
-                            transform: 'rotate(-45deg)',
-                        }}></div>
-                    </div>
-                    <span style={{ fontFamily: mono, fontSize: 18, fontWeight: 600, color: ink, letterSpacing: -0.5 }}>forge</span>
-                </Link>
-                <nav style={{ display: 'flex', alignItems: 'center', gap: 28 }}>
-                    <Link to="/demo" style={{ fontSize: 14, fontWeight: 500, color: inkMuted, textDecoration: 'none' }}>See Demo</Link>
-                    <Link to="/login" style={{ fontSize: 14, fontWeight: 500, color: inkMuted, textDecoration: 'none' }}>Sign in</Link>
-                    <Link to="/login" style={{ fontSize: 14, fontWeight: 600, background: ink, color: '#FFF', padding: '10px 20px', borderRadius: 8, textDecoration: 'none' }}>
-                        Get started
-                    </Link>
-                </nav>
-            </header>
-
-            {/* Hero Section */}
-            <section style={{ maxWidth: 1100, margin: '0 auto', padding: '80px 24px 120px', position: 'relative', zIndex: 10 }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 60, alignItems: 'center' }}>
-                    {/* Left: Typography */}
-                    <div>
-                        <h1 style={{ fontFamily: serif, fontSize: 56, fontWeight: 400, lineHeight: 1.05, letterSpacing: -1, marginBottom: 24 }}>
-                            Run 1,000 experiments<br/>
-                            <em style={{ fontStyle: 'italic', color: copper }}>overnight</em> while you sleep.
-                        </h1>
-                        <p style={{ fontSize: 18, fontWeight: 400, color: inkMuted, lineHeight: 1.6, marginBottom: 32, maxWidth: 480 }}>
-                            FORGE gives growth teams autonomous experimentation. Define your metric, 
-                            run the loop, wake up to better ad copy, landing pages, and emails.
-                        </p>
-
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                            <Link
-                                to="/demo"
-                                style={{
-                                    display: 'inline-block',
-                                    padding: '16px 36px',
-                                    fontSize: 16,
-                                    fontWeight: 600,
-                                    fontFamily: font,
-                                    background: copper,
-                                    color: '#FFF',
-                                    border: 'none',
-                                    borderRadius: 10,
-                                    textDecoration: 'none',
-                                    boxShadow: '0 8px 24px rgba(196,122,42,0.3)',
-                                }}
-                            >
-                                See Demo
-                            </Link>
-                            <Link
-                                to="/demo"
-                                style={{ fontSize: 14, color: inkMuted, textDecoration: 'none', borderBottom: `1px solid ${inkMuted}` }}
-                            >
-                                Watch it work →
-                            </Link>
-                        </div>
-                    </div>
-
-                    {/* Right: Abstract Visual */}
-                    <div style={{ position: 'relative', height: 400, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <div style={{ position: 'absolute', inset: 0, background: `radial-gradient(circle, ${copper}08 0%, transparent 70%)`, borderRadius: '50%', filter: 'blur(60px)' }}></div>
-                        
-                        {/* Grid Cells */}
-                        <div style={{ 
-                            display: 'grid', 
-                            gridTemplateColumns: 'repeat(6, 1fr)', 
-                            gap: 12, 
-                            width: '100%', 
-                            maxWidth: 320,
-                            opacity: 0.15,
-                        }}>
-                            {Array.from({ length: 36 }).map((_, i) => (
-                                <div 
-                                    key={i}
-                                    style={{
-                                        aspectRatio: '1',
-                                        background: i === 17 || i === 22 ? copper : '#E5E7EB',
-                                        borderRadius: 4,
-                                        animation: `cell-blink 5s infinite`,
-                                        animationDelay: `${Math.random() * 8}s`,
-                                    }}
-                                />
-                            ))}
-                        </div>
-
-                        {/* Center Target */}
-                        <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }}>
-                            <div style={{ 
-                                width: 120, 
-                                height: 120, 
-                                background: ink, 
-                                borderRadius: 24, 
-                                display: 'flex', 
-                                alignItems: 'center', 
-                                justifyContent: 'center',
-                                boxShadow: '0 20px 40px rgba(0,0,0,0.3)',
-                                position: 'relative',
-                            }}>
-                                <div style={{ 
-                                    position: 'absolute', 
-                                    width: 160, 
-                                    height: 160, 
-                                    background: copper, 
-                                    borderRadius: '50%', 
-                                    opacity: 0.1,
-                                    animation: 'pulse 4s ease-in-out infinite',
-                                }}></div>
-                                <span style={{ fontFamily: serif, fontSize: 36, color: copper }}>f</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-            {/* Stats Bar */}
-            <section style={{ background: '#161514', padding: '48px 24px' }}>
-                <div style={{ maxWidth: 1100, margin: '0 auto', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 32, textAlign: 'center' }}>
-                    <div>
-                        <div style={{ fontFamily: serif, fontSize: 48, fontWeight: 700, color: copper, marginBottom: 4 }}>81%</div>
-                        <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1.5 }}>average lift</div>
-                    </div>
-                    <div>
-                        <div style={{ fontFamily: serif, fontSize: 48, fontWeight: 700, color: '#FFF', marginBottom: 4 }}>1,000+</div>
-                        <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1.5 }}>variants per run</div>
-                    </div>
-                    <div>
-                        <div style={{ fontFamily: serif, fontSize: 48, fontWeight: 700, color: '#10B981', marginBottom: 4 }}>$29</div>
-                        <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1.5 }}>starts at /mo</div>
-                    </div>
-                    <div>
-                        <div style={{ fontFamily: serif, fontSize: 48, fontWeight: 700, color: copper, marginBottom: 4 }}>99%</div>
-                        <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1.5 }}>gross margin</div>
-                    </div>
-                </div>
-            </section>
-
-            {/* Demo Section */}
-            <section style={{ padding: '80px 24px', position: 'relative' }}>
-                <div style={{ 
-                    position: 'absolute', 
-                    top: 0, 
-                    left: 0, 
-                    right: 0, 
-                    height: 200, 
-                    background: 'linear-gradient(to bottom, rgba(250,249,246,1), transparent)',
-                    pointerEvents: 'none',
-                }}></div>
-                
-                <div style={{ maxWidth: 900, margin: '0 auto', position: 'relative', zIndex: 10 }}>
-                    <div style={{ textAlign: 'center', marginBottom: 40 }}>
-                        <h2 style={{ fontFamily: serif, fontSize: 40, fontWeight: 400, marginBottom: 12 }}>
-                            See it in action
-                        </h2>
-                        <p style={{ fontSize: 16, color: inkMuted }}>
-                            Run the optimizer to identify high-performing variants instantly
-                        </p>
-                    </div>
-
-                    {/* Tabs */}
-                    <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginBottom: 32 }}>
-                        {tabs.map((tab, i) => (
-                            <button
-                                key={tab.id}
-                                onClick={() => setActiveTab(i)}
-                                style={{
-                                    padding: '12px 28px',
-                                    fontSize: 13,
-                                    fontWeight: 600,
-                                    fontFamily: font,
-                                    borderRadius: 24,
-                                    cursor: 'pointer',
-                                    border: activeTab === i ? 'none' : '1px solid rgba(26,22,20,0.1)',
-                                    background: activeTab === i ? copper : 'transparent',
-                                    color: activeTab === i ? '#FFF' : inkMuted,
-                                    transition: 'all 0.2s',
-                                    textTransform: 'uppercase',
-                                    letterSpacing: 1,
-                                }}
-                            >
-                                {tab.label}
-                            </button>
-                        ))}
-                    </div>
-
-                    {/* Content with transition */}
-                    <div style={{ position: 'relative' }}>
-                        {tabs.map((tab, i) => (
-                            <div 
-                                key={tab.id}
-                                style={{
-                                    transition: 'all 0.4s ease',
-                                    opacity: activeTab === i ? 1 : 0,
-                                    transform: activeTab === i ? 'translateY(0)' : 'translateY(12px)',
-                                    position: activeTab === i ? 'relative' : 'absolute',
-                                    pointerEvents: activeTab === i ? 'auto' : 'none',
-                                    visibility: activeTab === i ? 'visible' : 'hidden',
-                                }}
-                            >
-                                {tab.component}
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            </section>
-
-            {/* How It Works */}
-            <section style={{ padding: '80px 24px', maxWidth: 1100, margin: '0 auto' }}>
-                <div style={{ textAlign: 'center', marginBottom: 48 }}>
-                    <h2 style={{ fontFamily: serif, fontSize: 40, fontWeight: 400 }}>
-                        Built for growth teams
-                    </h2>
-                    <p style={{ fontSize: 16, color: inkMuted, marginTop: 12, maxWidth: 500, margin: '12px auto 0' }}>
-                        No A/B testing expertise required. No waiting for statistical significance.
-                    </p>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 32, position: 'relative' }}>
-                    {/* Connecting Line */}
-                    <div style={{ 
-                        position: 'absolute', 
-                        top: 60, 
-                        left: '20%', 
-                        right: '20%', 
-                        height: 1, 
-                        background: 'rgba(26,22,20,0.1)',
-                        zIndex: 0,
-                    }}></div>
-
-                    {[
-                        { num: '01', title: 'Define Your Metric', desc: 'Tell us what to optimize: CTR, conversion, reply rate. We handle the rest.' },
-                        { num: '02', title: 'Run Overnight', desc: 'AI agents generate and test thousands of variants while you sleep.' },
-                        { num: '03', title: 'Wake Up Better', desc: 'Get the optimized version with a full experiment report.' },
-                    ].map((step, i) => (
-                        <div key={i} style={{ textAlign: 'center', position: 'relative', zIndex: 1 }}>
-                            <div style={{ 
-                                width: 64, height: 64, 
-                                background: '#FFF', 
-                                border: '1px solid rgba(26,22,20,0.1)',
-                                borderRadius: 20, 
-                                display: 'flex', 
-                                alignItems: 'center', 
-                                justifyContent: 'center',
-                                margin: '0 auto 20px',
-                                boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
-                            }}>
-                                <span style={{ fontFamily: mono, fontSize: 20, fontWeight: 700, color: copper }}>{step.num}</span>
-                            </div>
-                            <h3 style={{ fontSize: 18, fontWeight: 600, marginBottom: 8, color: ink }}>{step.title}</h3>
-                            <p style={{ fontSize: 14, color: inkMuted, lineHeight: 1.6, maxWidth: 240, margin: '0 auto' }}>{step.desc}</p>
-                        </div>
-                    ))}
-                </div>
-            </section>
-
-            {/* Marquee Use Cases */}
-            <Marquee />
-
-            {/* CTA */}
-            <section style={{ background: '#161514', padding: '80px 24px', textAlign: 'center', position: 'relative' }}>
-                <div style={{ 
-                    position: 'absolute', 
-                    top: '50%', 
-                    left: '50%', 
-                    transform: 'translate(-50%, -50%)', 
-                    width: 600, 
-                    height: 400, 
-                    background: `${copper}10`, 
-                    borderRadius: '50%', 
-                    filter: 'blur(120px)',
-                    pointerEvents: 'none',
-                }}></div>
-                
-                <div style={{ maxWidth: 500, margin: '0 auto', position: 'relative', zIndex: 10 }}>
-                    <h2 style={{ fontFamily: serif, fontSize: 48, fontWeight: 400, color: '#FFF', marginBottom: 24 }}>
-                        Ready to find the<br/>best version?
-                    </h2>
-                    <Link
-                        to="/login"
-                        style={{
-                            display: 'inline-block',
-                            padding: '16px 48px',
-                            fontSize: 16,
-                            fontWeight: 600,
-                            fontFamily: font,
-                            background: '#FFF',
-                            color: ink,
-                            border: 'none',
-                            borderRadius: 10,
-                            textDecoration: 'none',
-                        }}
-                    >
-                        Get started free
-                    </Link>
-                </div>
-            </section>
-
-            {/* Footer */}
-            <footer style={{ padding: '24px', background: cream }}>
-                <div style={{ maxWidth: 1100, margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <div style={{ width: 24, height: 24, background: ink, borderRadius: 4, transform: 'rotate(45deg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            <div style={{ width: 8, height: 8, background: copper, borderRadius: 2 }}></div>
-                        </div>
-                        <span style={{ fontWeight: 600, fontSize: 14 }}>Forge</span>
-                    </div>
-                    <div style={{ fontSize: 12, color: inkLight, textTransform: 'uppercase', letterSpacing: 1 }}>
-                        2026 Forge OS — Automated Variant Optimization
-                    </div>
-                </div>
-            </footer>
-
-            <style>{`
-                @keyframes pulse {
-                    0%, 100% { opacity: 0.6; }
-                    50% { opacity: 1; }
-                }
-                @keyframes cell-blink {
-                    0%, 100% { background-color: #E5E7EB; opacity: 1; }
-                    15%, 25% { background-color: #FBD38D; opacity: 0.4; }
-                    40% { background-color: #E5E7EB; opacity: 1; }
-                }
-                @keyframes marquee-scroll {
-                    from { transform: translateX(0); }
-                    to { transform: translateX(-33.33%); }
-                }
-            `}</style>
+// ── Template Card ──────────────────────────────────────────────
+function TemplateCard({
+  name, desc, baseline, range,
+}: {
+  name: string; desc: string; baseline: string; range: string;
+}) {
+  const [hovered, setHovered] = useState(false);
+  return (
+    <div
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        background: white,
+        border: `1px solid ${hovered ? copperBorder : inkFaint}`,
+        borderRadius: 14,
+        padding: '24px 24px',
+        cursor: 'default',
+        transition: 'border-color 0.2s, box-shadow 0.2s',
+        boxShadow: hovered ? `0 8px 28px rgba(196,122,42,0.1)` : 'none',
+      }}
+    >
+      <div style={{ marginBottom: 14 }}>
+        <div style={{ fontSize: 14, fontWeight: 600, color: ink, marginBottom: 4 }}>{name}</div>
+        <div style={{ fontSize: 12, color: inkMuted, lineHeight: 1.5 }}>{desc}</div>
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+        <div>
+          <div style={{ fontFamily: mono, fontSize: 11, color: inkMuted, marginBottom: 2 }}>baseline</div>
+          <div style={{ fontFamily: mono, fontSize: 18, fontWeight: 700, color: copper }}>{baseline}</div>
         </div>
-    );
+        <div style={{ textAlign: 'right' }}>
+          <div style={{ fontFamily: mono, fontSize: 11, color: inkMuted, marginBottom: 2 }}>range</div>
+          <div style={{ fontFamily: mono, fontSize: 12, color: ink }}>{range}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Growth Demo ────────────────────────────────────────────────
+const VARIANTS = [
+  { headline: 'Save time and money',             cvr: 3.46 },
+  { headline: 'Stop wasting hours every week',   cvr: 3.71 },
+  { headline: 'Ship experiments 10x faster',     cvr: 3.89 },
+  { headline: 'Your competitors test this daily', cvr: 4.04 },
+  { headline: 'Want to 10x your CVR tonight?',   cvr: 4.21 },
+];
+
+function GrowthDemo() {
+  const [running, setRunning] = useState(false);
+  const [iter, setIter]       = useState(0);
+
+  useEffect(() => {
+    if (!running) return;
+    const iv = setInterval(() => {
+      setIter(i => {
+        if (i >= VARIANTS.length - 1) { setRunning(false); return i; }
+        return i + 1;
+      });
+    }, 640);
+    return () => clearInterval(iv);
+  }, [running]);
+
+  const cur = VARIANTS[iter];
+  const improvement = (((cur.cvr - 3.46) / 3.46) * 100).toFixed(0);
+  const done = iter === VARIANTS.length - 1 && !running;
+
+  return (
+    <div style={{
+      background: white,
+      border: `1px solid ${inkFaint}`,
+      borderRadius: 20,
+      overflow: 'hidden',
+      boxShadow: '0 4px 24px rgba(0,0,0,0.05)',
+      maxWidth: 560,
+      margin: '0 auto',
+    }}>
+      {/* Header */}
+      <div style={{
+        padding: '18px 28px',
+        borderBottom: `1px solid ${inkFaint}`,
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{
+            width: 7, height: 7, borderRadius: '50%',
+            background: running ? green : (done ? green : copper),
+            transition: 'background 0.3s',
+            boxShadow: running ? `0 0 8px ${green}60` : 'none',
+          }} />
+          <span style={{ fontFamily: mono, fontSize: 12, fontWeight: 500, color: ink }}>
+            landing-page-cro
+          </span>
+        </div>
+        <button
+          onClick={() => { setRunning(true); setIter(0); }}
+          disabled={running}
+          style={{
+            fontFamily: font, fontSize: 13, fontWeight: 600,
+            background: running ? 'transparent' : ink,
+            color: running ? inkMuted : white,
+            border: running ? `1px solid ${inkFaint}` : 'none',
+            padding: '9px 20px', borderRadius: 8,
+            cursor: running ? 'not-allowed' : 'pointer',
+            transition: 'all 0.2s',
+          }}
+        >
+          {running ? 'Testing...' : done ? 'Run again' : 'Test variants'}
+        </button>
+      </div>
+
+      {/* Headline */}
+      <div style={{ padding: '28px 28px 20px', background: cream }}>
+        <div style={{
+          fontFamily: mono, fontSize: 10, fontWeight: 500,
+          color: inkMuted, textTransform: 'uppercase', letterSpacing: 1.5,
+          marginBottom: 12,
+        }}>
+          Current headline variant
+        </div>
+        <div style={{
+          fontFamily: serif, fontSize: 26, color: ink,
+          lineHeight: 1.2, minHeight: 62,
+          transition: 'all 0.25s ease',
+        }}>
+          {cur.headline}
+        </div>
+      </div>
+
+      {/* Metrics */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', padding: '20px 28px', gap: 24 }}>
+        <div>
+          <div style={{
+            fontFamily: mono, fontSize: 10, fontWeight: 500,
+            color: inkMuted, textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 8,
+          }}>
+            Conversion Rate
+          </div>
+          <div style={{ fontFamily: mono, fontSize: 34, fontWeight: 700, color: ink }}>
+            {cur.cvr.toFixed(2)}%
+          </div>
+        </div>
+        <div>
+          <div style={{
+            fontFamily: mono, fontSize: 10, fontWeight: 500,
+            color: inkMuted, textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 8,
+          }}>
+            Improvement
+          </div>
+          <div style={{
+            fontFamily: mono, fontSize: 34, fontWeight: 700,
+            color: iter > 0 ? green : inkMuted,
+            transition: 'color 0.3s',
+          }}>
+            {iter > 0 ? `+${improvement}%` : '—'}
+          </div>
+        </div>
+      </div>
+
+      {/* Progress dots */}
+      <div style={{ display: 'flex', gap: 6, padding: '0 28px 24px' }}>
+        {VARIANTS.map((_, i) => (
+          <div
+            key={i}
+            style={{
+              flex: 1, height: 4, borderRadius: 2,
+              background: i <= iter ? copper : inkFaint,
+              transition: 'background 0.25s ease',
+            }}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Main Page ──────────────────────────────────────────────────
+export default function Landing() {
+  return (
+    <div style={{ minHeight: '100vh', background: cream, fontFamily: font, color: ink }}>
+
+      {/* ── Navbar ── */}
+      <header style={{
+        position: 'sticky', top: 0, zIndex: 100,
+        background: 'rgba(250,248,245,0.88)',
+        backdropFilter: 'blur(16px)',
+        WebkitBackdropFilter: 'blur(16px)',
+        borderBottom: `1px solid ${inkFaint}`,
+      }}>
+        <div style={{
+          maxWidth: 1100, margin: '0 auto', padding: '0 28px',
+          height: 60, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        }}>
+          <Link to="/" style={{ textDecoration: 'none' }}>
+            <ForgeLogo size={26} />
+          </Link>
+          <nav style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <Link to="/demo" style={{
+              fontFamily: font, fontSize: 14, fontWeight: 500,
+              color: inkMuted, textDecoration: 'none', padding: '8px 16px',
+            }}>
+              Demo
+            </Link>
+            <Link to="/login" style={{
+              fontFamily: font, fontSize: 14, fontWeight: 500,
+              color: inkMuted, textDecoration: 'none', padding: '8px 16px',
+            }}>
+              Sign in
+            </Link>
+            <Link to="/login" style={{
+              fontFamily: font, fontSize: 14, fontWeight: 600,
+              background: ink, color: white,
+              padding: '9px 22px', borderRadius: 8, textDecoration: 'none',
+              marginLeft: 4,
+            }}>
+              Get started
+            </Link>
+          </nav>
+        </div>
+      </header>
+
+      {/* ── Hero ── */}
+      <section style={{ maxWidth: 1100, margin: '0 auto', padding: '96px 28px 120px' }}>
+        <div style={{
+          display: 'grid', gridTemplateColumns: '1fr 1fr',
+          gap: 72, alignItems: 'center',
+        }}>
+          {/* Left */}
+          <div>
+            {/* Label chip */}
+            <div style={{
+              display: 'inline-flex', alignItems: 'center', gap: 8,
+              background: copperDim, border: `1px solid ${copperBorder}`,
+              borderRadius: 100, padding: '5px 14px',
+              fontFamily: mono, fontSize: 10, fontWeight: 500,
+              color: copper, letterSpacing: 0.8, textTransform: 'uppercase',
+              marginBottom: 28,
+            }}>
+              <div style={{ width: 5, height: 5, borderRadius: '50%', background: copper }} />
+              PostHog-powered · AI agents · Real traffic
+            </div>
+
+            <h1 style={{
+              fontFamily: serif,
+              fontSize: 56,
+              fontWeight: 400,
+              lineHeight: 1.06,
+              letterSpacing: -1,
+              color: ink,
+              marginBottom: 22,
+            }}>
+              Autonomous A/B testing.<br />
+              <em style={{ fontStyle: 'italic', color: copper }}>Real users.</em> Real lift.
+            </h1>
+
+            <p style={{
+              fontSize: 16, lineHeight: 1.7, color: inkMuted,
+              marginBottom: 36, maxWidth: 440,
+            }}>
+              Connect PostHog. Forge agents run experiments on your live product — deploying variants as feature flags, measuring CVR on real users, keeping what wins.
+            </p>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 }}>
+              <Link to="/login" style={{
+                fontFamily: font, fontSize: 15, fontWeight: 600,
+                background: copper, color: white,
+                padding: '14px 32px', borderRadius: 10,
+                textDecoration: 'none',
+                boxShadow: '0 4px 22px rgba(196,122,42,0.32)',
+                transition: 'box-shadow 0.2s',
+              }}>
+                Start experimenting
+              </Link>
+              <Link to="/demo" style={{
+                fontFamily: font, fontSize: 15, fontWeight: 500,
+                color: ink, textDecoration: 'none',
+                display: 'flex', alignItems: 'center', gap: 7,
+                borderBottom: `1px solid ${inkFaint}`, paddingBottom: 1,
+              }}>
+                See it live
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                  <path d="M3 7h8M8 4l3 3-3 3" stroke={ink} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </Link>
+            </div>
+
+            <div style={{ fontFamily: mono, fontSize: 11, color: inkMuted }}>
+              Free to start · ~$0.0001 per experiment
+            </div>
+          </div>
+
+          {/* Right: terminal */}
+          <div>
+            <AgentTerminal />
+          </div>
+        </div>
+      </section>
+
+      {/* ── Stats Belt ── */}
+      <div style={{ background: dark, padding: '52px 28px' }}>
+        <div style={{
+          maxWidth: 720, margin: '0 auto',
+          display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)',
+        }}>
+          {[
+            { value: '5',        label: 'templates ready' },
+            { value: '$0.0001',  label: 'per experiment' },
+            { value: 'Real CVR', label: 'measured by PostHog' },
+          ].map((s, i) => (
+            <div key={i} style={{
+              textAlign: 'center', padding: '0 28px',
+              borderRight: i < 2 ? '1px solid rgba(255,255,255,0.07)' : 'none',
+            }}>
+              <div style={{ fontFamily: serif, fontSize: 38, fontWeight: 400, color: copper, marginBottom: 8 }}>
+                {s.value}
+              </div>
+              <div style={{
+                fontSize: 11, fontWeight: 500, color: 'rgba(255,255,255,0.38)',
+                textTransform: 'uppercase', letterSpacing: 1.5,
+              }}>
+                {s.label}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── How It Works ── */}
+      <section style={{ padding: '100px 28px' }}>
+        <div style={{ maxWidth: 980, margin: '0 auto' }}>
+          <div style={{ textAlign: 'center', marginBottom: 64 }}>
+            <h2 style={{ fontFamily: serif, fontSize: 44, fontWeight: 400, color: ink, marginBottom: 12 }}>
+              The loop. On repeat.
+            </h2>
+            <p style={{ fontSize: 16, color: inkMuted, maxWidth: 420, margin: '0 auto' }}>
+              Forge runs your experimentation engine automatically, around the clock.
+            </p>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 20, position: 'relative' }}>
+            {/* Connector line */}
+            <div style={{
+              position: 'absolute', top: 42, left: '20%', right: '20%', height: 1,
+              background: `linear-gradient(to right, transparent, ${inkFaint} 25%, ${inkFaint} 75%, transparent)`,
+              zIndex: 0,
+            }} />
+
+            {[
+              {
+                num: '01', title: 'Connect PostHog',
+                desc: 'Add your API key. Forge reads your conversion events and builds a baseline metric for each template.',
+                icon: (
+                  <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+                    <circle cx="4" cy="9" r="2.5" stroke={copper} strokeWidth="1.4" />
+                    <circle cx="14" cy="9" r="2.5" stroke={copper} strokeWidth="1.4" />
+                    <path d="M6.5 9h5" stroke={copper} strokeWidth="1.4" strokeLinecap="round" strokeDasharray="1.5 2" />
+                  </svg>
+                ),
+              },
+              {
+                num: '02', title: 'Agents propose + deploy',
+                desc: 'AI agents generate hypotheses and deploy variants as PostHog feature flags — real 50/50 traffic split.',
+                icon: <DiamondMark size={18} outerColor={ink} innerColor={copper} />,
+              },
+              {
+                num: '03', title: 'Winners kept automatically',
+                desc: 'After the window, Forge compares CVR. Better variants ship. Worse ones revert. You get the morning report.',
+                icon: (
+                  <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+                    <path d="M3 9.5l3.5 3.5 8-8" stroke={green} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                ),
+              },
+            ].map((step, i) => (
+              <div key={i} style={{
+                background: white, border: `1px solid ${inkFaint}`,
+                borderRadius: 16, padding: '28px 24px',
+                position: 'relative', zIndex: 1,
+              }}>
+                <div style={{
+                  width: 42, height: 42, borderRadius: 12,
+                  background: cream, border: `1px solid ${inkFaint}`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  marginBottom: 20,
+                }}>
+                  {step.icon}
+                </div>
+                <div style={{
+                  fontFamily: mono, fontSize: 10, color: copper,
+                  fontWeight: 600, letterSpacing: 0.5, marginBottom: 8,
+                }}>
+                  {step.num}
+                </div>
+                <h3 style={{ fontSize: 16, fontWeight: 600, color: ink, marginBottom: 10 }}>{step.title}</h3>
+                <p style={{ fontSize: 13, color: inkMuted, lineHeight: 1.65 }}>{step.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── Templates ── */}
+      <section style={{ padding: '0 28px 100px' }}>
+        <div style={{ maxWidth: 980, margin: '0 auto' }}>
+          <div style={{ textAlign: 'center', marginBottom: 48 }}>
+            <h2 style={{ fontFamily: serif, fontSize: 44, fontWeight: 400, color: ink, marginBottom: 12 }}>
+              Five surfaces. One loop.
+            </h2>
+            <p style={{ fontSize: 16, color: inkMuted }}>
+              Every template ships with a deterministic evaluator and PostHog flag payload.
+            </p>
+          </div>
+
+          {/* Top row: 3 cards */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14, marginBottom: 14 }}>
+            <TemplateCard name="Landing Page CRO"     desc="Headline, CTA copy, value props"      baseline="3.46%"  range="1–5% CVR" />
+            <TemplateCard name="Page Structure"        desc="Section order, hero placement"        baseline="3.72%"  range="via feature flags" />
+            <TemplateCard name="Onboarding Flow"       desc="Step count, field friction"           baseline="57.3%" range="30–65% completion" />
+          </div>
+          {/* Bottom row: 2 cards centred */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, maxWidth: 648, margin: '0 auto' }}>
+            <TemplateCard name="Pricing Page"          desc="Plan framing, CTA copy"               baseline="4.30%"  range="1.5–5% upgrade rate" />
+            <TemplateCard name="Feature Announcement"  desc="Banner position, badge style"         baseline="19.0%" range="8–28% adoption" />
+          </div>
+        </div>
+      </section>
+
+      {/* ── Live Demo ── */}
+      <section style={{ padding: '0 28px 112px' }}>
+        <div style={{ maxWidth: 980, margin: '0 auto' }}>
+          <div style={{ textAlign: 'center', marginBottom: 52 }}>
+            <h2 style={{ fontFamily: serif, fontSize: 44, fontWeight: 400, color: ink, marginBottom: 12 }}>
+              See it run.
+            </h2>
+            <p style={{ fontSize: 16, color: inkMuted }}>
+              Hit the button. Watch CVR move. This is what your agents do while you sleep.
+            </p>
+          </div>
+          <GrowthDemo />
+        </div>
+      </section>
+
+      {/* ── CTA ── */}
+      <section style={{
+        background: dark, padding: '108px 28px',
+        textAlign: 'center', position: 'relative', overflow: 'hidden',
+      }}>
+        {/* Ambient glow */}
+        <div style={{
+          position: 'absolute', top: '50%', left: '50%',
+          transform: 'translate(-50%,-50%)',
+          width: 560, height: 320,
+          background: `radial-gradient(ellipse, rgba(196,122,42,0.14) 0%, transparent 70%)`,
+          pointerEvents: 'none',
+        }} />
+
+        <div style={{ position: 'relative', zIndex: 1 }}>
+          {/* Large logo mark */}
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 36 }}>
+            <DiamondMark size={60} outerColor="rgba(255,255,255,0.9)" innerColor={copper} />
+          </div>
+
+          <h2 style={{
+            fontFamily: serif, fontSize: 52, fontWeight: 400,
+            color: white, marginBottom: 14,
+          }}>
+            Start optimizing tonight.
+          </h2>
+          <p style={{ fontSize: 16, color: 'rgba(255,255,255,0.4)', marginBottom: 44 }}>
+            Set up in minutes. Agents run while you sleep.
+          </p>
+          <Link to="/login" style={{
+            display: 'inline-block',
+            fontFamily: font, fontSize: 15, fontWeight: 600,
+            background: white, color: ink,
+            padding: '15px 48px', borderRadius: 10,
+            textDecoration: 'none',
+          }}>
+            Get started free
+          </Link>
+        </div>
+      </section>
+
+      {/* ── Footer ── */}
+      <footer style={{
+        padding: '18px 28px',
+        background: cream,
+        borderTop: `1px solid ${inkFaint}`,
+      }}>
+        <div style={{
+          maxWidth: 1100, margin: '0 auto',
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        }}>
+          <Link to="/" style={{ textDecoration: 'none' }}>
+            <ForgeLogo size={22} />
+          </Link>
+          <span style={{ fontFamily: mono, fontSize: 11, color: inkMuted }}>
+            Autonomous variant optimization
+          </span>
+          <Link to="/login" style={{ fontSize: 13, color: inkMuted, textDecoration: 'none' }}>
+            Sign in
+          </Link>
+        </div>
+      </footer>
+
+      <style>{`
+        @keyframes pulse-green {
+          0%, 100% { opacity: 1;   box-shadow: 0 0 7px rgba(16,185,129,0.55); }
+          50%       { opacity: 0.5; box-shadow: 0 0 14px rgba(16,185,129,0.85); }
+        }
+        @keyframes blink {
+          0%, 100% { opacity: 1; }
+          50%       { opacity: 0; }
+        }
+        @keyframes bounce-dot {
+          0%, 100% { opacity: 0.3; transform: translateY(0px); }
+          50%       { opacity: 1;   transform: translateY(-4px); }
+        }
+        @keyframes fadein {
+          from { opacity: 0; transform: translateY(5px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes fill-bar {
+          from { width: 0%; }
+          to   { width: 100%; }
+        }
+      `}</style>
+    </div>
+  );
 }
