@@ -6,10 +6,13 @@ This script runs a pre-seeded optimization to populate the dashboard
 with experiments before the demo. Uses faster delays for demo purposes.
 
 Usage:
-    python run_demo.py                    # Run landing page template
-    python run_demo.py --template prompt  # Run prompt optimization
-    python run_demo.py --agents 3         # Run with 3 agents
-    python run_demo.py --limit 47          # Run 47 experiments then stop
+    python run_demo.py                              # Run landing page template (default)
+    python run_demo.py --template onboarding        # Run onboarding flow
+    python run_demo.py --template pricing-page      # Run pricing page
+    python run_demo.py --template structural        # Run page structure
+    python run_demo.py --template feature-announcement  # Run feature announcement
+    python run_demo.py --agents 3                   # Run with 3 agents
+    python run_demo.py --limit 47                   # Run 47 experiments then stop
 """
 import asyncio
 import argparse
@@ -109,7 +112,7 @@ async def run_single_agent(template_id: str, delay: float, max_experiments: int 
 def main():
     parser = argparse.ArgumentParser(description="Run Forge demo agent")
     parser.add_argument("--template", "-t", default="landing-page-cro",
-                       choices=["landing-page-cro", "prompt-optimization", "email-outreach", "portfolio-optimization", "dcf-model"],
+                       choices=["landing-page-cro", "structural", "onboarding", "pricing-page", "feature-announcement"],
                        help="Template to use")
     parser.add_argument("--agents", "-a", type=int, default=1,
                        help="Number of agents to run")
@@ -127,11 +130,11 @@ def main():
         args.agents = 1
     
     template_map = {
-        "landing-page-cro": "Landing Page CRO",
-        "prompt-optimization": "Prompt Optimization",
-        "email-outreach": "Email Outreach",
-        "portfolio-optimization": "Portfolio Optimization",
-        "dcf-model": "DCF Model",
+        "landing-page-cro":     "Landing Page CRO",
+        "structural":           "Page Structure",
+        "onboarding":           "Onboarding Flow",
+        "pricing-page":         "Pricing Page",
+        "feature-announcement": "Feature Announcement",
     }
     
     print(f"=== FORGE Demo Runner ===")

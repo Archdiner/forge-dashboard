@@ -276,55 +276,308 @@ class ForgeAgent(BaseForgeAgent):
         except Exception as e:
             print(f"[{self.agent_name}] Failed to send checkpoint notification: {e}")
     
+    async def _evaluate_simulation(
+        self,
+        best,
+        mutated_config: dict,
+    ):
+        """Evaluate via deterministic template evaluators (existing behaviour)."""
+        from templates.base import EvaluationResult
+        return self.template.evaluate(mutated_config, llm=self.llm)
+
+    async def _evaluate_backtest(
+        self,
+        best,
+        mutated_config: dict,
+    ):
+        """Evaluate via PostHog historical windows.
+
+        Compares two historical periods to simulate a baseline vs variant
+        measurement. Returns an EvaluationResult with the PostHog metric.
+
+        The 'metric' returned is the ratio (comparison / baseline), so values
+        above 1.0 indicate the variant window performed better.
+        """
+        from templates.base import EvaluationResult
+        from connectors.posthog import PostHogConnector, MetricDefinition
+
+        cfg = self.config
+        if not cfg.posthog_api_key or not cfg.posthog_project_id or not cfg.posthog_metric:
+            print(f"[{self.agent_name}] Backtest mode requires PostHog config — falling back to simulation")
+            return self.template.evaluate(mutated_config, llm=self.llm)
+
+        connector = PostHogConnector(cfg.posthog_api_key, cfg.posthog_base_url)
+        metric_def = MetricDefinition.from_dict(cfg.posthog_metric)
+
+        try:
+            baseline_result, comparison_result = await connector.query_metric_backtest(
+                cfg.posthog_project_id, metric_def,
+                window_days=7, lookback_days=14
+            )
+            # Ratio: comparison window vs baseline window
+            # >1 means the comparison period was better
+            ratio = (comparison_result.value / baseline_result.value) if baseline_result.value > 0 else 1.0
+            reasoning = (
+                f"Backtest: baseline window {baseline_result.value:.4f} "
+                f"vs comparison {comparison_result.value:.4f} "
+                f"(ratio {ratio:.3f}, n={baseline_result.sample_size})"
+            )
+            # Return absolute value so we can compare directly to best.metric
+            return EvaluationResult(metric=comparison_result.value, reasoning=reasoning)
+        except Exception as e:
+            print(f"[{self.agent_name}] PostHog backtest error: {e} — falling back to simulation")
+            return self.template.evaluate(mutated_config, llm=self.llm)
+
+    async def _evaluate_live(
+        self,
+        best,
+        mutated_config: dict,
+        hypothesis: "Hypothesis",
+        exp_id: str,
+    ):
+        """Evaluate via live PostHog measurement (real deployment cycle).
+
+        1. Convert mutated config to human-readable variant text.
+        2. Register the cycle in the ratchet (shows variant in dashboard).
+        3. Broadcast variant_ready event to frontend.
+        4. Wait for user to confirm deployment.
+        5. Wait cycle_window_hours.
+        6. Query PostHog for current metric.
+        7. Compare to baseline, record decision.
+        """
+        from templates.base import EvaluationResult
+        from connectors.posthog import PostHogConnector, MetricDefinition
+        from ratchet import ratchet
+        from main import broadcast_to_websockets
+
+        cfg = self.config
+        project_id = getattr(cfg, 'project_id', '')
+
+        # Convert config to readable variant text for the user to copy/deploy
+        try:
+            variant_text = self.template.config_to_output(mutated_config)
+        except Exception:
+            import json
+            variant_text = json.dumps(mutated_config, indent=2)
+
+        # Register in ratchet
+        cycle = ratchet.start_cycle(
+            project_id=project_id,
+            variant_text=variant_text,
+            variant_config=mutated_config,
+            hypothesis=hypothesis.hypothesis,
+            baseline_metric=best.metric,
+            cycle_window_hours=cfg.cycle_window_hours,
+        )
+
+        # Notify frontend: show the deploy panel
+        await broadcast_to_websockets({
+            "type": "variant_ready",
+            "project_id": project_id,
+            "cycle": cycle.to_dict(),
+            "message": "Variant ready to deploy",
+        })
+
+        print(f"[{self.agent_name}] Waiting for user deployment confirmation...")
+        await self.update_status("running", "Waiting for deployment confirmation…")
+
+        # Wait for user to click "I've deployed this"
+        deployed = await ratchet.wait_for_deployment(project_id, timeout_hours=72.0)
+        if not deployed:
+            print(f"[{self.agent_name}] Deployment confirmation timed out")
+            ratchet.clear(project_id)
+            return EvaluationResult(metric=best.metric, reasoning="Deployment confirmation timed out")
+
+        active_cycle = ratchet.get_active_cycle(project_id)
+        if not active_cycle:
+            return EvaluationResult(metric=best.metric, reasoning="Cycle cancelled")
+
+        # Wait out the measurement window
+        window_secs = cfg.cycle_window_hours * 3600
+        print(f"[{self.agent_name}] Measuring for {cfg.cycle_window_hours}h…")
+        await self.update_status("running", f"Measuring for {cfg.cycle_window_hours}h…")
+        await asyncio.sleep(window_secs)
+
+        # Query PostHog
+        if not cfg.posthog_api_key or not cfg.posthog_project_id or not cfg.posthog_metric:
+            print(f"[{self.agent_name}] Live mode: PostHog not configured — using simulation fallback")
+            sim_result = self.template.evaluate(mutated_config, llm=self.llm)
+            ratchet.record_result(
+                project_id,
+                sim_result.metric,
+                "kept" if sim_result.metric > best.metric else "reverted",
+            )
+            return sim_result
+
+        try:
+            connector = PostHogConnector(cfg.posthog_api_key, cfg.posthog_base_url)
+            metric_def = MetricDefinition.from_dict(cfg.posthog_metric)
+            result = await connector.get_current_metric(
+                cfg.posthog_project_id, metric_def, cfg.cycle_window_hours
+            )
+            is_improvement = result.value > best.metric
+            decision = "kept" if is_improvement else "reverted"
+            ratchet.record_result(project_id, result.value, decision)
+
+            await broadcast_to_websockets({
+                "type": "cycle_evaluated",
+                "project_id": project_id,
+                "cycle_id": cycle.cycle_id,
+                "metric": result.value,
+                "baseline": best.metric,
+                "decision": decision,
+            })
+
+            reasoning = (
+                f"PostHog metric: {result.value:.4f} vs baseline {best.metric:.4f} "
+                f"— {decision} (n={result.sample_size})"
+            )
+            return EvaluationResult(metric=result.value, reasoning=reasoning)
+
+        except Exception as e:
+            print(f"[{self.agent_name}] PostHog live query error: {e}")
+            ratchet.clear(project_id)
+            return EvaluationResult(metric=best.metric, reasoning=f"PostHog error: {e}")
+
+    # ── Sim pre-screen ─────────────────────────────────────────────────────────
+
+    def _detect_phase(self, history: List[ExperimentHistory]) -> str:
+        """Detect whether we're in exploration, refinement, or convergence.
+
+        Returns one of:
+          "exploration"  — high variance, frequent wins; cast wide net
+          "refinement"   — narrowing; fine-tune promising directions
+          "convergence"  — stagnating; minimal pre-screen overhead
+        """
+        import statistics
+        if len(history) < 10:
+            return "exploration"
+
+        recent = history[:20]
+        metrics = [e.metric_after for e in recent if e.metric_after and e.metric_after > 0]
+        if len(metrics) < 5:
+            return "exploration"
+
+        improvement_rate = sum(1 for e in recent if e.status == "success") / len(recent)
+        try:
+            cv = statistics.stdev(metrics) / statistics.mean(metrics) if statistics.mean(metrics) > 0 else 1.0
+        except statistics.StatisticsError:
+            cv = 1.0
+
+        if improvement_rate >= 0.30 or cv > 0.05:
+            return "exploration"
+        elif improvement_rate >= 0.10 or cv > 0.02:
+            return "refinement"
+        else:
+            return "convergence"
+
+    def _prescreen_candidates(
+        self,
+        prompt: str,
+        best: "GlobalBestState",
+        n: int,
+    ) -> "Hypothesis":
+        """Generate N candidates, sim-score each, return the best.
+
+        This is the cheap filter that prevents weak hypotheses from consuming
+        real user traffic in backtest/live modes.
+        """
+        candidates = []
+        for _ in range(n):
+            h = self.llm.generate_structured(prompt, Hypothesis, temperature=self._temperature)
+            if not h:
+                continue
+            mutated = self.template.apply_mutation(best.config, h.mutation)
+            score = self.template.evaluate(mutated).metric
+            candidates.append((score, h))
+
+        if not candidates:
+            return None
+
+        candidates.sort(key=lambda x: x[0], reverse=True)
+        best_score, best_h = candidates[0]
+        print(
+            f"[{self.agent_name}] Pre-screened {len(candidates)} candidates — "
+            f"best sim score {best_score:.4f} — promoting: {best_h.hypothesis[:60]}"
+        )
+        return best_h
+
+    # ── Main experiment loop ───────────────────────────────────────────────────
+
     async def run_single_experiment(self, template_id: str) -> bool:
-        """Run a single experiment cycle."""
-        print(f"\n[{self.agent_name}] Starting experiment...")
-        
+        """Run a single experiment cycle.
+
+        Routes to the appropriate evaluation mode:
+          simulation — deterministic template evaluators (default)
+          backtest   — PostHog historical windows (demo-ready)
+          live       — real deployment + PostHog measurement (production)
+
+        In backtest/live modes, a simulation pre-screen filters N LLM
+        candidates before any real traffic is spent. The number of candidates
+        (and therefore LLM calls) scales with detected exploration phase:
+          exploration  → 5 candidates  (wide search, high variance phase)
+          refinement   → 3 candidates  (narrowing, fine-tuning phase)
+          convergence  → 1 candidate   (minimal overhead, near ceiling)
+        """
+        mode = getattr(self.config, 'experiment_mode', 'simulation')
+        print(f"\n[{self.agent_name}] Starting experiment (mode={mode})...")
+
         # 1. Get current state
         best = await self.get_global_best(template_id)
         if not best:
             print(f"[{self.agent_name}] Failed to get global best, skipping")
             return False
-        
+
         history = await self.get_history(template_id)
-        
-        # 2. Generate hypothesis
+
+        # 2. Generate hypothesis — with sim pre-screen in backtest/live modes
         await self.update_status("thinking", "Generating hypothesis...")
         base_prompt = self.template.generate_hypothesis_prompt(best, history)
         _, _, role_addendum = self.ROLE_CONFIGS.get(self.role, (0.7, "medium", ""))
         prompt = f"{base_prompt}\n\nAGENT ROLE ({self.role.upper()}): {role_addendum}"
 
-        hypothesis = self.llm.generate_structured(prompt, Hypothesis, temperature=self._temperature)
+        if mode in ("backtest", "live"):
+            phase = self._detect_phase(history)
+            n_candidates = {"exploration": 5, "refinement": 3, "convergence": 1}[phase]
+            print(f"[{self.agent_name}] Phase={phase} → pre-screening {n_candidates} candidate(s)")
+            hypothesis = self._prescreen_candidates(prompt, best, n_candidates)
+        else:
+            hypothesis = self.llm.generate_structured(prompt, Hypothesis, temperature=self._temperature)
+
         if not hypothesis:
             print(f"[{self.agent_name}] Failed to generate hypothesis")
             return False
-        
+
         print(f"[{self.agent_name}] Hypothesis: {hypothesis.hypothesis}")
-        
+
         # 3. Claim experiment
         await self.update_status("running", hypothesis.hypothesis)
         exp_id = await self.claim_experiment(hypothesis, template_id)
-        
+
         if not exp_id:
             print(f"[{self.agent_name}] Dedup rejected - another agent claimed this")
             return False
-        
+
         print(f"[{self.agent_name}] Claimed experiment: {exp_id}")
-        
+
         # 4. Apply mutation
         mutated_config = self.template.apply_mutation(best.config, hypothesis.mutation)
-        
-        # 5. Evaluate — call the template's evaluator directly.
-        # Deterministic templates ignore llm; LLM-powered templates (e.g. prompt_opt) use it.
+
+        # 5. Evaluate — route to the right evaluator
         await self.update_status("running", "Evaluating...")
-        result = self.template.evaluate(mutated_config, llm=self.llm)
-        
-        print(f"[{self.agent_name}] Result: {result.metric:.2f} ({result.reasoning[:50]}...)")
-        
+        if mode == "live":
+            result = await self._evaluate_live(best, mutated_config, hypothesis, exp_id)
+        elif mode == "backtest":
+            result = await self._evaluate_backtest(best, mutated_config)
+        else:
+            result = await self._evaluate_simulation(best, mutated_config)
+
+        print(f"[{self.agent_name}] Result: {result.metric:.4f} ({result.reasoning[:60]}...)")
+
         # 6. Determine status
         is_improvement = result.metric > best.metric
         status = "success" if is_improvement else "failure"
-        
+
         # 7. Publish result
         await self.update_status("publishing", "Publishing result...")
         success = await self.publish_result(
@@ -335,19 +588,16 @@ class ForgeAgent(BaseForgeAgent):
             result.reasoning,
             template_id
         )
-        
+
         if success:
-            # Update global best config if this was an improvement
             if is_improvement:
                 await self.api.update_global_best(template_id, mutated_config)
-            
-            if is_improvement:
-                print(f"[{self.agent_name}] ✓ IMPROVEMENT! {best.metric:.1f} → {result.metric:.1f}")
+                print(f"[{self.agent_name}] ✓ IMPROVEMENT! {best.metric:.4f} → {result.metric:.4f}")
             else:
-                print(f"[{self.agent_name}] ✗ No improvement: {best.metric:.1f} → {result.metric:.1f}")
+                print(f"[{self.agent_name}] ✗ No improvement: {best.metric:.4f} → {result.metric:.4f}")
         else:
             print(f"[{self.agent_name}] Failed to publish result")
-        
+
         return success
     
     async def run_loop(self) -> None:
