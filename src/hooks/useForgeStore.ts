@@ -244,8 +244,12 @@ export function useForgeStore(templateId: TemplateId = 'landing-page-cro') {
     fetchInitialData();
     connectWebSocket();
 
+    // Poll for updates every 3 seconds
+    const interval = setInterval(fetchInitialData, 3000);
+
     return () => {
       wsRef.current?.close();
+      clearInterval(interval);
     };
   }, [fetchInitialData, connectWebSocket]);
 
