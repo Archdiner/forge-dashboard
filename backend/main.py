@@ -449,7 +449,8 @@ async def _run_agent_task(
             settings.posthog_metric = ph.get("metric") or {}
             settings.cycle_window_hours = ph.get("cycle_window_hours", 24)
 
-        agent = ForgeAgent(settings, role=role)
+        # Pass store directly to agent - avoids HTTP calls entirely
+        agent = ForgeAgent(settings, role=role, store=store)
         await agent.run_loop()
     except Exception as e:
         print(f"[project:{project_id}] Agent {agent_idx} error: {e}")

@@ -11,6 +11,62 @@ from templates.base import BaseTemplate, Hypothesis, EvaluationResult, GlobalBes
 from templates import get_template
 
 
+class DirectStoreAPI:
+    """Direct store access - no HTTP calls needed when running in same process."""
+    
+    def __init__(self, store):
+        self.store = store
+    
+    async def get_global_best(self, template_id: str):
+        from templates.base import GlobalBestState
+        gb = self.store.get_global_best(template_id)
+        if gb:
+            return GlobalBestState(
+                template_id=gb.template_id,
+                metric=gb.metric,
+                config=gb.config,
+                experiment_count=gb.experiment_count
+            )
+        return None
+    
+    async def get_history(self, template_id: str, limit: int = 20):
+        from templates.base import ExperimentHistory
+        exps = list(self.store.experiments.values())
+        exps = [e for e in exps if e.template_id == template_id][-limit:]
+        return [ExperimentHistory(
+            id=e.id,
+            hypothesis=e.hypothesis,
+            mutation=e.mutation,
+            metric_before=e.metric_before,
+            metric_after=e.metric_after,
+            status=e.status.value,
+            reasoning=e.reasoning
+        ) for e in exps]
+    
+    async def claim_experiment(self, agent_id, agent_name, template_id, hypothesis, mutation):
+        from models import HypothesisRequest
+        req = HypothesisRequest(agent_id=agent_id, agent_name=agent_name, template_id=template_id)
+        exp, success = self.store.claim_experiment(req, hypothesis, mutation)
+        return exp.id if success else None
+    
+    async def publish_result(self, experiment_id, metric_after, status, reasoning):
+        exp = self.store.publish_result(experiment_id, metric_after, status, reasoning)
+        return exp is not None
+    
+    async def register_agent(self, agent_id, agent_name):
+        return True
+    
+    async def update_global_best(self, template_id, config):
+        return self.store.update_global_best_config(template_id, config)
+    
+    async def get_checkpoint_state(self, project_id):
+        return self.store.checkpoint_state.get(project_id, {"paused": False, "at_checkpoint": False, "message": ""})
+    
+    async def set_checkpoint_state(self, project_id, state):
+        self.store.checkpoint_state[project_id] = state
+        return True
+
+
 class ForgeAPI:
     """Simple HTTP client for Forge backend API."""
     
@@ -175,12 +231,16 @@ class ForgeAgent(BaseForgeAgent):
         "synthesizer": (0.6, "medium", "Combine insights from the BEST past experiments. Look for ways to merge multiple winning mutations into one hypothesis."),
     }
 
-    def __init__(self, config: Settings, role: str = "explorer"):
+    def __init__(self, config: Settings, role: str = "explorer", store=None):
         self.config = config
         self.role = role.lower()
         self.template = get_template(config.template_id)
         self.llm = GeminiClient(config.google_api_key)
-        self.api = ForgeAPI(config.forge_api_url)
+        # Use direct store access if available (for same-process execution)
+        if store is not None:
+            self.api = DirectStoreAPI(store)
+        else:
+            self.api = ForgeAPI(config.forge_api_url)
         self._running = False
         temperature, _, _ = self.ROLE_CONFIGS.get(self.role, (0.7, "medium", ""))
         self._temperature = temperature
