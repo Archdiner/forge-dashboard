@@ -32,9 +32,14 @@ const TEMPLATE_BASELINES: Record<string, number> = {
   'feature-announcement': 0.190,
 };
 
-// All current templates are rate-based — display as X.XX%
+// Templates where metric is a rate (0-1) → display as X.XX%
 const RATE_TEMPLATES = new Set([
   'landing-page-cro', 'structural', 'onboarding', 'pricing-page', 'feature-announcement',
+]);
+
+// Templates where metric is already 0-100 score → display as X
+const SCORE_TEMPLATES = new Set([
+  'ad-copy', 'email-outreach',
 ]);
 
 const METRIC_LABEL: Record<string, string> = {
@@ -43,10 +48,13 @@ const METRIC_LABEL: Record<string, string> = {
   'onboarding':           'Completion Rate',
   'pricing-page':         'Upgrade Rate',
   'feature-announcement': 'Adoption Rate',
+  'ad-copy':             'Ad Score',
+  'email-outreach':      'Email Score',
 };
 
 function fmtMetric(metric: number, templateId: string): string {
   if (RATE_TEMPLATES.has(templateId)) return `${(metric * 100).toFixed(2)}%`;
+  if (SCORE_TEMPLATES.has(templateId)) return `${metric.toFixed(0)}`;
   return metric.toFixed(metric < 10 ? 4 : 1);
 }
 
@@ -54,6 +62,10 @@ function fmtDiff(diff: number, templateId: string): string {
   if (RATE_TEMPLATES.has(templateId)) {
     // Show as percentage point change: +0.42pp
     return `${diff > 0 ? '+' : ''}${(diff * 100).toFixed(2)}pp`;
+  }
+  if (SCORE_TEMPLATES.has(templateId)) {
+    // Score templates: +X
+    return `${diff > 0 ? '+' : ''}${diff.toFixed(0)}`;
   }
   return `${diff > 0 ? '+' : ''}${diff.toFixed(3)}`;
 }
@@ -453,7 +465,8 @@ function OptimizationCurve({ curve, templateId }: { curve: { experiment: number;
   if (data.length === 0) return null;
 
   const isRate = RATE_TEMPLATES.has(templateId);
-  const tickFmt = (v: number) => isRate ? `${(v * 100).toFixed(1)}%` : v.toFixed(3);
+  const isScore = SCORE_TEMPLATES.has(templateId);
+  const tickFmt = (v: number) => isRate ? `${(v * 100).toFixed(1)}%` : isScore ? v.toFixed(0) : v.toFixed(3);
 
   return (
     <div style={{ marginBottom: 32 }}>
