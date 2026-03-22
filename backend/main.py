@@ -427,14 +427,11 @@ async def _run_agent_task(
 
         settings = load_settings()
         settings.agent_id = f"{project_id}-agent-{agent_idx}"
-        # Resolve FORGE_API_URL: use env var if set, otherwise derive from PORT
-        # Railway sets PORT env var - use that for agent to connect back to API
+        # Resolve FORGE_API_URL: agents need to call back to the API
+        # In Railway, PORT is set by Railway (often 8080). 
+        # Use FORGE_API_URL if explicitly set, otherwise use localhost with the PORT
         _port = _os.getenv("PORT", "8000")
-        _forge_url = _os.getenv("FORGE_API_URL", "")
-        if _forge_url:
-            settings.forge_api_url = _forge_url
-        else:
-            settings.forge_api_url = f"http://localhost:{_port}"
+        settings.forge_api_url = f"http://localhost:{_port}"
         settings.agent_name = f"{role.capitalize()} Agent"
         settings.template_id = template_id
         settings.experiment_delay = 3.0
