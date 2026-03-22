@@ -20,7 +20,18 @@ class Settings(BaseModel):
     improvement_threshold: float = 0.01  # minimum improvement to count as success
     max_retries: int = 3
     retry_delay: float = 1.0
-    
+
+    # Experiment mode: "simulation" | "backtest" | "live"
+    experiment_mode: str = "simulation"
+
+    # PostHog settings (used in "backtest" and "live" modes)
+    posthog_api_key: str = ""
+    posthog_project_id: int = 0
+    posthog_base_url: str = "https://app.posthog.com"
+    # Metric definition as a serialised dict (type, numerator_event, etc.)
+    posthog_metric: dict = {}
+    cycle_window_hours: int = 24
+
     class Config:
         extra = "allow"
 

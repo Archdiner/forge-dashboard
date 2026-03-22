@@ -8,9 +8,11 @@ from typing import Dict, List, Optional, Set
 
 from models import (
     Experiment, ExperimentStatus, Agent, AgentStatus,
-    GlobalBest, HypothesisRequest, ExperimentPublish
+    GlobalBest, HypothesisRequest, ExperimentPublish,
+    PostHogConfig, PostHogMetricDefinition, CycleInfo,
 )
 from store import store
+from ratchet import ratchet
 
 app = FastAPI(title="Forge API")
 
@@ -408,7 +410,15 @@ async def get_evaluator(evaluator_id: str):
 _running_project_tasks: Dict[str, List[asyncio.Task]] = {}
 
 
-async def _run_agent_task(project_id: str, template_id: str, role: str, agent_idx: int, max_experiments: int = 50, checkpoint_every: int = 10):
+async def _run_agent_task(
+    project_id: str,
+    template_id: str,
+    role: str,
+    agent_idx: int,
+    max_experiments: int = 50,
+    checkpoint_every: int = 10,
+    experiment_mode: str = "simulation",
+):
     """Background coroutine: run one agent for a project."""
     try:
         from config import load_settings
@@ -422,6 +432,16 @@ async def _run_agent_task(project_id: str, template_id: str, role: str, agent_id
         settings.max_experiments = max_experiments
         settings.checkpoint_every = checkpoint_every
         settings.project_id = project_id
+        settings.experiment_mode = experiment_mode
+
+        # Inject PostHog config if configured for this project
+        ph = _posthog_configs.get(project_id, {})
+        if ph:
+            settings.posthog_api_key = ph.get("personal_api_key", "")
+            settings.posthog_project_id = ph.get("posthog_project_id", 0)
+            settings.posthog_base_url = ph.get("base_url", "https://app.posthog.com")
+            settings.posthog_metric = ph.get("metric") or {}
+            settings.cycle_window_hours = ph.get("cycle_window_hours", 24)
 
         agent = ForgeAgent(settings, role=role)
         await agent.run_loop()
@@ -454,12 +474,18 @@ async def start_project_agents(project_id: str, body: dict = {}):
     roles_order = ["explorer", "refiner", "synthesizer"]
     roles = body.get("roles", roles_order[:agent_count])
     max_experiments = int(body.get("max_experiments", 50))
-    checkpoint_every = int(body.get("checkpoint_every", 10))  # Default: checkpoint every 10 experiments
+    checkpoint_every = int(body.get("checkpoint_every", 10))
+    experiment_mode = body.get("experiment_mode", "simulation")
 
     tasks = []
     for i, role in enumerate(roles[:agent_count]):
         task = asyncio.create_task(
-            _run_agent_task(project_id, template_id, role, i + 1, max_experiments=max_experiments, checkpoint_every=checkpoint_every)
+            _run_agent_task(
+                project_id, template_id, role, i + 1,
+                max_experiments=max_experiments,
+                checkpoint_every=checkpoint_every,
+                experiment_mode=experiment_mode,
+            )
         )
         tasks.append(task)
 
@@ -654,6 +680,423 @@ async def export_project(project_id: str, format: str = "json"):
         }
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# POSTHOG CONNECTOR ENDPOINTS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# In-memory PostHog configs per project (production: store in Supabase)
+_posthog_configs: Dict[str, dict] = {}
+
+
+@app.post("/connectors/posthog/verify")
+async def verify_posthog(body: dict):
+    """Verify a PostHog personal API key and return available projects.
+
+    Body: {"api_key": "phx_...", "base_url": "https://app.posthog.com"}
+
+    Returns:
+        {"success": true, "projects": [{"id": 123, "name": "My App", "api_token": "..."}]}
+    """
+    api_key = body.get("api_key", "").strip()
+    base_url = body.get("base_url", "https://app.posthog.com")
+
+    if not api_key:
+        return {"success": False, "error": "api_key required"}
+
+    try:
+        from connectors.posthog import PostHogConnector
+        connector = PostHogConnector(api_key, base_url)
+        result = await connector.verify()
+        return result
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/connectors/posthog/events/{project_id}")
+async def list_posthog_events(project_id: int, api_key: str, base_url: str = "https://app.posthog.com"):
+    """List the most frequent event names in a PostHog project.
+
+    Used to populate the metric selector dropdown.
+    Returns: {"events": ["pageview", "signup", "purchase", ...]}
+    """
+    try:
+        from connectors.posthog import PostHogConnector
+        connector = PostHogConnector(api_key, base_url)
+        events = await connector.list_events(project_id)
+        return {"events": events}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/projects/{project_id}/posthog")
+async def set_project_posthog(project_id: str, body: dict):
+    """Store PostHog connection settings for a project.
+
+    Body:
+    {
+        "personal_api_key": "phx_...",
+        "posthog_project_id": 123,
+        "base_url": "https://app.posthog.com",
+        "metric": {"type": "rate", "numerator_event": "signup", "denominator_event": "pageview"},
+        "cycle_window_hours": 24
+    }
+    """
+    _posthog_configs[project_id] = {
+        "personal_api_key": body.get("personal_api_key", ""),
+        "posthog_project_id": int(body.get("posthog_project_id", 0)),
+        "base_url": body.get("base_url", "https://app.posthog.com"),
+        "metric": body.get("metric"),
+        "cycle_window_hours": int(body.get("cycle_window_hours", 24)),
+    }
+    return {"success": True}
+
+
+@app.get("/projects/{project_id}/posthog")
+async def get_project_posthog(project_id: str):
+    """Get PostHog config for a project (without exposing full API key)."""
+    config = _posthog_configs.get(project_id)
+    if not config:
+        return {"configured": False}
+    return {
+        "configured": True,
+        "posthog_project_id": config.get("posthog_project_id"),
+        "base_url": config.get("base_url"),
+        "metric": config.get("metric"),
+        "cycle_window_hours": config.get("cycle_window_hours"),
+        "api_key_hint": config.get("personal_api_key", "")[:8] + "...",
+    }
+
+
+@app.get("/projects/{project_id}/metric")
+async def query_project_metric(project_id: str, window_hours: int = 24):
+    """Query the current PostHog metric for this project.
+
+    Uses the project's stored metric definition and queries the last
+    window_hours of data. Used for live polling during measurement phase.
+    """
+    config = _posthog_configs.get(project_id)
+    if not config:
+        return {"error": "PostHog not configured for this project"}
+
+    metric_def = config.get("metric")
+    if not metric_def:
+        return {"error": "No metric defined for this project"}
+
+    try:
+        from connectors.posthog import PostHogConnector, MetricDefinition
+        connector = PostHogConnector(config["personal_api_key"], config["base_url"])
+        metric = MetricDefinition.from_dict(metric_def)
+        result = await connector.get_current_metric(
+            config["posthog_project_id"], metric, window_hours
+        )
+        return {
+            "value": result.value,
+            "sample_size": result.sample_size,
+            "time_from": result.time_from.isoformat(),
+            "time_to": result.time_to.isoformat(),
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# FEATURE FLAG ENDPOINTS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+@app.get("/connectors/posthog/flags/{project_id}")
+async def list_feature_flags(project_id: int, api_key: str, base_url: str = "https://app.posthog.com"):
+    """List all feature flags in a PostHog project.
+
+    Returns:
+        {"flags": [{"id": "...", "key": "...", "name": "...", "active": true, ...}]}
+    """
+    try:
+        from connectors.posthog import PostHogConnector
+        connector = PostHogConnector(api_key, base_url)
+        flags = await connector.list_feature_flags(project_id)
+        return {"flags": flags}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/connectors/posthog/flags/{project_id}")
+async def create_feature_flag(project_id: int, body: dict):
+    """Create a new feature flag with multivariate variants.
+
+    Body:
+    {
+        "api_key": "phx_...",
+        "base_url": "https://app.posthog.com",
+        "name": "Forge Landing Page",
+        "key": "forge-landing-page",
+        "description": "A/B test landing page variants",
+        "variants": [
+            {"name": "control", "payload": {"headline": "Original"}},
+            {"name": "variant", "payload": {"headline": "New Variant"}}
+        ],
+        "rollout_percentage": 50
+    }
+
+    Returns:
+        {"success": true, "flag_id": "...", "flag_key": "..."}
+    """
+    api_key = body.get("api_key", "")
+    base_url = body.get("base_url", "https://app.posthog.com")
+    name = body.get("name", "Forge Experiment")
+    key = body.get("key", "")
+    description = body.get("description", "")
+    variants = body.get("variants", [])
+    rollout = body.get("rollout_percentage", 50)
+
+    if not api_key or not key:
+        return {"success": False, "error": "api_key and key are required"}
+
+    try:
+        from connectors.posthog import PostHogConnector
+        connector = PostHogConnector(api_key, base_url)
+        result = await connector.create_feature_flag(
+            project_id=project_id,
+            name=name,
+            key=key,
+            description=description,
+            variants=variants,
+            rollout_percentage=rollout,
+        )
+        return result
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.patch("/connectors/posthog/flags/{project_id}/{flag_id}")
+async def update_feature_flag(project_id: int, flag_id: str, body: dict):
+    """Update a feature flag's rollout or configuration.
+
+    Body:
+    {
+        "api_key": "phx_...",
+        "base_url": "https://app.posthog.com",
+        "rollout_percentage": 100,  # Update rollout
+        "name": "New name",        # Update name
+        "active": false            # Disable flag
+    }
+    """
+    api_key = body.get("api_key", "")
+    base_url = body.get("base_url", "https://app.posthog.com")
+
+    if not api_key:
+        return {"success": False, "error": "api_key is required"}
+
+    try:
+        from connectors.posthog import PostHogConnector
+        connector = PostHogConnector(api_key, base_url)
+        
+        update_data = {}
+        if "rollout_percentage" in body:
+            update_data["rollout_percentage"] = body["rollout_percentage"]
+        if "name" in body:
+            update_data["name"] = body["name"]
+        if "description" in body:
+            update_data["description"] = body["description"]
+        if "active" in body:
+            update_data["active"] = body["active"]
+
+        result = await connector.update_feature_flag(
+            project_id=project_id,
+            flag_id=flag_id,
+            **update_data
+        )
+        return result
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.delete("/connectors/posthog/flags/{project_id}/{flag_id}")
+async def delete_feature_flag(project_id: int, flag_id: str, body: dict):
+    """Delete a feature flag.
+
+    Body:
+    {
+        "api_key": "phx_...",
+        "base_url": "https://app.posthog.com"
+    }
+    """
+    api_key = body.get("api_key", "")
+    base_url = body.get("base_url", "https://app.posthog.com")
+
+    if not api_key:
+        return {"success": False, "error": "api_key is required"}
+
+    try:
+        from connectors.posthog import PostHogConnector
+        connector = PostHogConnector(api_key, base_url)
+        result = await connector.delete_feature_flag(project_id, flag_id)
+        return result
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.get("/connectors/posthog/flags/{project_id}/{flag_key}/metrics")
+async def get_flag_metrics(
+    project_id: int,
+    flag_key: str,
+    api_key: str,
+    base_url: str = "https://app.posthog.com",
+    numerator_event: str = "",
+    denominator_event: str = "",
+    event: str = "",
+    time_from: str = "",
+    time_to: str = "",
+):
+    """Get per-variant metrics for a feature flag experiment.
+
+    Query params:
+    - api_key: PostHog API key
+    - base_url: PostHog instance URL
+    - numerator_event: For rate metrics, the numerator event
+    - denominator_event: For rate metrics, the denominator event
+    - event: For count metrics, the event to count
+    - time_from: Start date (YYYY-MM-DD)
+    - time_to: End date (YYYY-MM-DD)
+
+    Returns:
+    {
+        "control": {"metric": 0.042, "sample_size": 1000},
+        "variant": {"metric": 0.051, "sample_size": 980},
+        "winner": "variant" | "control" | "inconclusive"
+    }
+    """
+    if not api_key:
+        return {"error": "api_key is required"}
+
+    try:
+        from connectors.posthog import PostHogConnector, MetricDefinition
+        from datetime import datetime
+
+        connector = PostHogConnector(api_key, base_url)
+
+        # Determine metric type
+        if numerator_event and denominator_event:
+            metric = MetricDefinition(
+                type="rate",
+                display_name=f"{numerator_event}/{denominator_event}",
+                numerator_event=numerator_event,
+                denominator_event=denominator_event,
+            )
+        elif event:
+            metric = MetricDefinition(
+                type="count",
+                display_name=event,
+                event=event,
+            )
+        else:
+            return {"error": "Must specify either numerator/denominator events or a single event"}
+
+        # Parse dates
+        dt_from = datetime.strptime(time_from, "%Y-%m-%d") if time_from else datetime.now()
+        dt_to = datetime.strptime(time_to, "%Y-%m-%d") if time_to else datetime.now()
+
+        result = await connector.compute_flag_metrics(
+            project_id=project_id,
+            flag_key=flag_key,
+            metric=metric,
+            time_from=dt_from,
+            time_to=dt_to,
+        )
+        return result
+    except Exception as e:
+        return {"error": str(e)}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# RATCHET / DEPLOYMENT LIFECYCLE ENDPOINTS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.get("/projects/{project_id}/cycle")
+async def get_active_cycle(project_id: str):
+    """Get the currently active deployment cycle for a project."""
+    cycle = ratchet.get_active_cycle(project_id)
+    if not cycle:
+        return {"active": False}
+    return {"active": True, "cycle": cycle.to_dict()}
+
+
+@app.post("/projects/{project_id}/cycle/deploy")
+async def confirm_deployment(project_id: str):
+    """User confirms they've deployed the variant to their site.
+
+    This starts the measurement timer. The agent (which is waiting for this
+    signal) will wake up and wait for cycle_window_hours before querying PostHog.
+    """
+    cycle = ratchet.confirm_deployment(project_id)
+    if not cycle:
+        return {"success": False, "error": "No pending deployment cycle found"}
+
+    await broadcast_to_websockets({
+        "type": "deployment_confirmed",
+        "project_id": project_id,
+        "cycle_id": cycle.cycle_id,
+        "measurement_ends_at": cycle.measurement_ends_at.isoformat(),
+        "cycle_window_hours": cycle.cycle_window_hours,
+    })
+
+    return {"success": True, "cycle": cycle.to_dict()}
+
+
+@app.get("/projects/{project_id}/cycles/history")
+async def get_cycle_history(project_id: str):
+    """Get completed cycle history for a project (the ratchet log)."""
+    history = ratchet.get_history(project_id)
+    return {
+        "cycles": [c.to_dict() for c in history],
+        "total": len(history),
+        "kept": sum(1 for c in history if c.decision == "kept"),
+        "reverted": sum(1 for c in history if c.decision == "reverted"),
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# MORNING REPORT
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.get("/projects/{project_id}/report")
+async def get_morning_report(project_id: str):
+    """Generate the morning report for a project.
+
+    Summarises all completed cycles: improvements kept, total lift, experiment log.
+    This is the "wake up and see what Forge found overnight" view.
+    """
+    history = ratchet.get_history(project_id)
+    project = store.projects.get(project_id)
+
+    kept = [c for c in history if c.decision == "kept"]
+    reverted = [c for c in history if c.decision == "reverted"]
+
+    # Compute net lift from first baseline to last kept metric
+    net_lift = 0.0
+    if history:
+        first_baseline = history[0].baseline_metric
+        last_metric = history[-1].measured_metric or history[-1].baseline_metric
+        if kept:
+            last_kept_metric = kept[-1].measured_metric or first_baseline
+            net_lift = ((last_kept_metric - first_baseline) / first_baseline * 100) if first_baseline else 0
+        else:
+            net_lift = 0.0
+
+    return {
+        "project_id": project_id,
+        "project_name": project.name if project else project_id,
+        "summary": {
+            "total_cycles": len(history),
+            "kept": len(kept),
+            "reverted": len(reverted),
+            "net_lift_pct": round(net_lift, 1),
+        },
+        "cycles": [c.to_dict() for c in history],
+        "recommendation": "continue" if len(kept) < 5 else "review",
+    }
 
 
 if __name__ == "__main__":

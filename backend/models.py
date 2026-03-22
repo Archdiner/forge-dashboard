@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, Any
 from datetime import datetime
 from enum import Enum
 
@@ -91,3 +91,52 @@ class Project(BaseModel):
     config: dict = {}
     created_at: datetime
     updated_at: datetime
+
+
+# ── PostHog models ──────────────────────────────────────────────────────────
+
+class PostHogMetricDefinition(BaseModel):
+    """Serializable form of connectors.posthog.MetricDefinition."""
+    type: str                               # "rate" | "count" | "hogsql"
+    display_name: str = ""
+    numerator_event: Optional[str] = None  # for "rate"
+    denominator_event: Optional[str] = None
+    event: Optional[str] = None            # for "count"
+    hogsql_query: Optional[str] = None     # for "hogsql"
+
+
+class PostHogConfig(BaseModel):
+    """PostHog connection settings stored per project."""
+    personal_api_key: str
+    project_id: int
+    base_url: str = "https://app.posthog.com"
+    metric: Optional[PostHogMetricDefinition] = None
+    cycle_window_hours: int = 24
+
+
+# ── Experiment mode ─────────────────────────────────────────────────────────
+
+class ExperimentMode(str, Enum):
+    SIMULATION = "simulation"   # deterministic evaluators (existing behaviour)
+    BACKTEST   = "backtest"     # PostHog historical windows (demo)
+    LIVE       = "live"         # real deployment + PostHog measurement
+
+
+# ── Cycle (ratchet) models ──────────────────────────────────────────────────
+
+class CycleInfo(BaseModel):
+    """API response shape for an active or completed cycle."""
+    project_id: str
+    cycle_id: str
+    state: str
+    variant_text: str
+    hypothesis: str
+    baseline_metric: float
+    measured_metric: Optional[float] = None
+    decision: Optional[str] = None
+    cycle_window_hours: int
+    created_at: str
+    deployed_at: Optional[str] = None
+    measurement_ends_at: Optional[str] = None
+    evaluated_at: Optional[str] = None
+    seconds_remaining: Optional[float] = None
