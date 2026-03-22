@@ -387,14 +387,14 @@ function PromptDemo() {
 // ============================================================
 function Marquee() {
     const items = [
-        'Copy & Content',
-        'Financial Models',
-        'Spreadsheets',
-        'Email Sequences',
-        'AI Prompts',
-        'Documents',
-        'Code',
-        'URLs',
+        'Meta Ads',
+        'Google Ads',
+        'Landing Pages',
+        'Email Subject Lines',
+        'Push Notifications',
+        'SMS Campaigns',
+        'Product Descriptions',
+        'SEO Titles',
     ];
     
     return (
@@ -450,9 +450,9 @@ export default function Landing() {
     const [activeTab, setActiveTab] = useState(0);
     
     const tabs = [
-        { id: 'portfolio', label: 'Financials', component: <PortfolioDemo /> },
-        { id: 'growth', label: 'Growth', component: <GrowthDemo /> },
+        { id: 'growth', label: 'Landing Pages', component: <GrowthDemo /> },
         { id: 'email', label: 'Email', component: <EmailDemo /> },
+        { id: 'portfolio', label: 'Portfolio', component: <PortfolioDemo /> },
         { id: 'prompt', label: 'AI Prompts', component: <PromptDemo /> },
     ];
 
@@ -503,6 +503,7 @@ export default function Landing() {
                     <span style={{ fontFamily: mono, fontSize: 18, fontWeight: 600, color: ink, letterSpacing: -0.5 }}>forge</span>
                 </Link>
                 <nav style={{ display: 'flex', alignItems: 'center', gap: 28 }}>
+                    <Link to="/demo" style={{ fontSize: 14, fontWeight: 500, color: inkMuted, textDecoration: 'none' }}>See Demo</Link>
                     <Link to="/login" style={{ fontSize: 14, fontWeight: 500, color: inkMuted, textDecoration: 'none' }}>Sign in</Link>
                     <Link to="/login" style={{ fontSize: 14, fontWeight: 600, background: ink, color: '#FFF', padding: '10px 20px', borderRadius: 8, textDecoration: 'none' }}>
                         Get started
@@ -516,17 +517,17 @@ export default function Landing() {
                     {/* Left: Typography */}
                     <div>
                         <h1 style={{ fontFamily: serif, fontSize: 56, fontWeight: 400, lineHeight: 1.05, letterSpacing: -1, marginBottom: 24 }}>
-                            Automate optimization.<br/>
-                            Find the <em style={{ fontStyle: 'italic', color: copper }}>best version</em> of anything.
+                            Run 1,000 experiments<br/>
+                            <em style={{ fontStyle: 'italic', color: copper }}>overnight</em> while you sleep.
                         </h1>
                         <p style={{ fontSize: 18, fontWeight: 400, color: inkMuted, lineHeight: 1.6, marginBottom: 32, maxWidth: 480 }}>
-                            FORGE evaluates thousands of variants against computed metrics instantly. 
-                            No waiting for A/B test traffic. Just optimization at machine speed — runs overnight while you sleep.
+                            FORGE gives growth teams autonomous experimentation. Define your metric, 
+                            run the loop, wake up to better ad copy, landing pages, and emails.
                         </p>
 
                         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
                             <Link
-                                to="/login"
+                                to="/demo"
                                 style={{
                                     display: 'inline-block',
                                     padding: '16px 36px',
@@ -541,11 +542,14 @@ export default function Landing() {
                                     boxShadow: '0 8px 24px rgba(196,122,42,0.3)',
                                 }}
                             >
-                                Start optimizing
+                                See Demo
                             </Link>
-                            <span style={{ fontSize: 14, color: inkMuted }}>
-                                No credit card required
-                            </span>
+                            <Link
+                                to="/demo"
+                                style={{ fontSize: 14, color: inkMuted, textDecoration: 'none', borderBottom: `1px solid ${inkMuted}` }}
+                            >
+                                Watch it work →
+                            </Link>
                         </div>
                     </div>
 
@@ -607,18 +611,22 @@ export default function Landing() {
 
             {/* Stats Bar */}
             <section style={{ background: '#161514', padding: '48px 24px' }}>
-                <div style={{ maxWidth: 1100, margin: '0 auto', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 32, textAlign: 'center' }}>
+                <div style={{ maxWidth: 1100, margin: '0 auto', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 32, textAlign: 'center' }}>
                     <div>
                         <div style={{ fontFamily: serif, fontSize: 48, fontWeight: 700, color: copper, marginBottom: 4 }}>81%</div>
                         <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1.5 }}>average lift</div>
                     </div>
                     <div>
                         <div style={{ fontFamily: serif, fontSize: 48, fontWeight: 700, color: '#FFF', marginBottom: 4 }}>1,000+</div>
-                        <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1.5 }}>variants per project</div>
+                        <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1.5 }}>variants per run</div>
                     </div>
                     <div>
-                        <div style={{ fontFamily: serif, fontSize: 48, fontWeight: 700, color: '#10B981', marginBottom: 4 }}>15 min</div>
-                        <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1.5 }}>to first results</div>
+                        <div style={{ fontFamily: serif, fontSize: 48, fontWeight: 700, color: '#10B981', marginBottom: 4 }}>$29</div>
+                        <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1.5 }}>starts at /mo</div>
+                    </div>
+                    <div>
+                        <div style={{ fontFamily: serif, fontSize: 48, fontWeight: 700, color: copper, marginBottom: 4 }}>99%</div>
+                        <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1.5 }}>gross margin</div>
                     </div>
                 </div>
             </section>
@@ -696,8 +704,11 @@ export default function Landing() {
             <section style={{ padding: '80px 24px', maxWidth: 1100, margin: '0 auto' }}>
                 <div style={{ textAlign: 'center', marginBottom: 48 }}>
                     <h2 style={{ fontFamily: serif, fontSize: 40, fontWeight: 400 }}>
-                        How it works
+                        Built for growth teams
                     </h2>
+                    <p style={{ fontSize: 16, color: inkMuted, marginTop: 12, maxWidth: 500, margin: '12px auto 0' }}>
+                        No A/B testing expertise required. No waiting for statistical significance.
+                    </p>
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 32, position: 'relative' }}>
@@ -713,9 +724,9 @@ export default function Landing() {
                     }}></div>
 
                     {[
-                        { num: '01', title: 'Connect Data', desc: 'Paste text or connect APIs. Define which metrics matter to you.' },
-                        { num: '02', title: 'Generate Variants', desc: 'Agents generate thousands of variations with smart mutation strategies.' },
-                        { num: '03', title: 'Converge', desc: 'The system identifies the global best automatically.' },
+                        { num: '01', title: 'Define Your Metric', desc: 'Tell us what to optimize: CTR, conversion, reply rate. We handle the rest.' },
+                        { num: '02', title: 'Run Overnight', desc: 'AI agents generate and test thousands of variants while you sleep.' },
+                        { num: '03', title: 'Wake Up Better', desc: 'Get the optimized version with a full experiment report.' },
                     ].map((step, i) => (
                         <div key={i} style={{ textAlign: 'center', position: 'relative', zIndex: 1 }}>
                             <div style={{ 
