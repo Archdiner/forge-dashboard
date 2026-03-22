@@ -399,11 +399,12 @@ function Hero({ best, experimentCount, totalCost, agentCount, templateId }: {
   );
 }
 
-function StatsRow({ best, experimentCount, cost, cycleHistory }: {
+function StatsRow({ best, experimentCount, cost, cycleHistory, templateId }: {
   best: ReturnType<typeof useForgeStore>['globalBest'];
   experimentCount: number;
   cost: { total: number };
   cycleHistory: CycleHistoryItem[];
+  templateId: TemplateId;
 }) {
   const keptCycles = cycleHistory.filter(c => c.decision === 'kept').length;
 
@@ -480,7 +481,7 @@ function OptimizationCurve({ curve, templateId }: { curve: { experiment: number;
               contentStyle={{ backgroundColor: cream, border: '1px solid rgba(26,22,20,0.1)', borderRadius: 4, fontFamily: font, fontSize: 12 }}
               itemStyle={{ color: copper, fontWeight: 500 }}
               labelStyle={{ color: inkMuted, fontSize: 10, fontFamily: mono }}
-              formatter={(v: number) => [isRate ? `${(v * 100).toFixed(2)}%` : v.toFixed(4), METRIC_LABEL[templateId] ?? 'Metric']}
+              formatter={(v) => { const n = Number(v ?? 0); return [isRate ? `${(n * 100).toFixed(2)}%` : n.toFixed(4), METRIC_LABEL[templateId] ?? 'Metric']; }}
             />
             <Area type="monotone" dataKey="metric" stroke={copper} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" fill="url(#curveGradient)" activeDot={{ r: 3.5, fill: copper, stroke: cream, strokeWidth: 2 }} />
           </AreaChart>
@@ -541,28 +542,17 @@ function Transformation({ best, templateId }: { best: ReturnType<typeof useForge
         Your Optimized Result
       </h3>
       <div style={{ background: 'rgba(16,185,129,0.06)', borderRadius: 10, padding: 20, border: '1px solid rgba(16,185,129,0.15)', marginBottom: 16 }}>
-        {templateId === 'portfolio-optimization' ? (
-          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-            {Object.entries(config?.assets as Record<string, number> || {}).map(([asset, pct]) => (
-              <div key={asset} style={{ textAlign: 'center' }}>
-                <div style={{ fontFamily: mono, fontSize: 22, fontWeight: 500, color: ink }}>{(pct * 100).toFixed(0)}%</div>
-                <div style={{ fontSize: 11, color: inkMuted, textTransform: 'uppercase' }}>{asset.replace('_', ' ').toLowerCase()}</div>
-              </div>
-            ))}
+        <>
+          <div style={{ fontFamily: serif, fontSize: 18, fontStyle: 'italic', color: ink, lineHeight: 1.4, marginBottom: 10 }}>
+            "{config?.headline || config?.subject_line || 'N/A'}"
           </div>
-        ) : (
-          <>
-            <div style={{ fontFamily: serif, fontSize: 18, fontStyle: 'italic', color: ink, lineHeight: 1.4, marginBottom: 10 }}>
-              "{config?.headline || config?.subject_line || 'N/A'}"
+          {config?.subheadline && <div style={{ fontSize: 13, color: inkMuted, marginBottom: 10 }}>{config.subheadline}</div>}
+          {(config?.cta_text || config?.cta) && (
+            <div style={{ fontFamily: mono, fontSize: 12, color: copper }}>
+              CTA: {config?.cta_text || config?.cta}
             </div>
-            {config?.subheadline && <div style={{ fontSize: 13, color: inkMuted, marginBottom: 10 }}>{config.subheadline}</div>}
-            {(config?.cta_text || config?.cta) && (
-              <div style={{ fontFamily: mono, fontSize: 12, color: copper }}>
-                CTA: {config?.cta_text || config?.cta}
-              </div>
-            )}
-          </>
-        )}
+          )}
+        </>
         <div style={{ fontFamily: mono, fontSize: 10, color: inkMuted, marginTop: 12 }}>
           {METRIC_LABEL[templateId] ?? 'Score'}: {fmtMetric(best?.metric ?? 0, templateId)} · {(best?.experiment_count ?? 0)} experiments
         </div>
@@ -835,6 +825,7 @@ export default function ProjectDetails() {
             experimentCount={store.experimentCount}
             cost={store.cost}
             cycleHistory={cycleHistory}
+            templateId={templateId}
           />
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: 40 }}>
