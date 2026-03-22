@@ -19,15 +19,29 @@ class DirectStoreAPI:
     
     async def get_global_best(self, template_id: str):
         from templates.base import GlobalBestState
+        from models import GlobalBest
         gb = self.store.get_global_best(template_id)
-        if gb:
-            return GlobalBestState(
-                template_id=gb.template_id,
-                metric=gb.metric,
-                config=gb.config,
-                experiment_count=gb.experiment_count
-            )
-        return None
+        # Auto-initialize if template not yet in store (e.g. email-outreach, ad-copy)
+        if not gb:
+            try:
+                from templates import get_template as _get_template
+                tpl = _get_template(template_id)
+                self.store.global_best[template_id] = GlobalBest(
+                    template_id=template_id,
+                    metric=tpl.get_default_metric(),
+                    config=tpl.default_config.copy(),
+                    experiment_count=0,
+                    last_updated=datetime.now()
+                )
+                gb = self.store.global_best[template_id]
+            except Exception:
+                return None
+        return GlobalBestState(
+            template_id=gb.template_id,
+            metric=gb.metric,
+            config=gb.config,
+            experiment_count=gb.experiment_count
+        )
     
     async def get_history(self, template_id: str, limit: int = 20):
         from templates.base import ExperimentHistory
@@ -39,40 +53,116 @@ class DirectStoreAPI:
             mutation=e.mutation,
             metric_before=e.metric_before,
             metric_after=e.metric_after,
-            status=e.status.value,
+            # e.status may be a plain string after publish_result assigns it directly
+            status=e.status.value if hasattr(e.status, 'value') else str(e.status),
             reasoning=e.reasoning
         ) for e in exps]
-    
+
     async def claim_experiment(self, agent_id, agent_name, template_id, hypothesis, mutation):
         from models import HypothesisRequest
+        # Ensure template has a global best entry before claiming
+        if template_id not in self.store.global_best:
+            from templates import get_template as _get_template
+            from models import GlobalBest
+            tpl = _get_template(template_id)
+            self.store.global_best[template_id] = GlobalBest(
+                template_id=template_id,
+                metric=tpl.get_default_metric(),
+                config=tpl.default_config.copy(),
+                experiment_count=0,
+                last_updated=datetime.now()
+            )
         req = HypothesisRequest(agent_id=agent_id, agent_name=agent_name, template_id=template_id)
         exp, success = self.store.claim_experiment(req, hypothesis, mutation)
         return exp.id if success else None
-    
+
     async def publish_result(self, experiment_id, agent_id, template_id, metric_before, metric_after, status, reasoning):
+        from models import ExperimentStatus
+        # Coerce string status to enum so store comparisons work correctly
+        if isinstance(status, str):
+            status = ExperimentStatus(status)
         exp = self.store.publish_result(experiment_id, metric_after, status, reasoning)
+        if exp is not None:
+            # Broadcast via WebSocket so frontend gets real-time updates
+            try:
+                from main import broadcast_to_websockets
+                import asyncio
+                best = self.store.get_global_best(template_id)
+                asyncio.create_task(broadcast_to_websockets({
+                    "type": "experiment_completed",
+                    "data": exp.model_dump(mode='json')
+                }))
+                if best:
+                    asyncio.create_task(broadcast_to_websockets({
+                        "type": "global_best_updated",
+                        "data": best.model_dump(mode='json')
+                    }))
+            except Exception:
+                pass
         return exp is not None
-    
+
     async def register_agent(self, agent_id, agent_name):
+        from models import Agent, AgentStatus
+        if agent_id not in self.store.agents:
+            self.store.agents[agent_id] = Agent(
+                id=agent_id,
+                name=agent_name,
+                status=AgentStatus.IDLE,
+                last_active=datetime.now()
+            )
+        try:
+            from main import broadcast_to_websockets
+            import asyncio
+            agent = self.store.agents[agent_id]
+            asyncio.create_task(broadcast_to_websockets({
+                "type": "agent_registered",
+                "data": agent.model_dump(mode='json')
+            }))
+        except Exception:
+            pass
         return True
-    
+
     async def update_global_best(self, template_id, config):
-        return self.store.update_global_best_config(template_id, config)
-    
+        result = self.store.update_global_best_config(template_id, config)
+        if result:
+            try:
+                from main import broadcast_to_websockets
+                import asyncio
+                best = self.store.get_global_best(template_id)
+                if best:
+                    asyncio.create_task(broadcast_to_websockets({
+                        "type": "global_best_updated",
+                        "data": best.model_dump(mode='json')
+                    }))
+            except Exception:
+                pass
+        return result
+
     async def get_checkpoint_state(self, project_id):
         return self.store.checkpoint_state.get(project_id, {"paused": False, "at_checkpoint": False, "message": ""})
-    
+
     async def set_checkpoint_state(self, project_id, state):
         self.store.checkpoint_state[project_id] = state
         return True
-    
+
     async def update_agent_status(self, agent_id, status, hypothesis=None):
+        from models import AgentStatus
         if agent_id in self.store.agents:
-            self.store.agents[agent_id].status = status
+            agent_status = AgentStatus(status) if isinstance(status, str) else status
+            self.store.agents[agent_id].status = agent_status
             self.store.agents[agent_id].current_hypothesis = hypothesis
-            self.store.agents[agent_id].last_active = datetime.now().isoformat()
+            self.store.agents[agent_id].last_active = datetime.now()
+        try:
+            from main import broadcast_to_websockets
+            import asyncio
+            asyncio.create_task(broadcast_to_websockets({
+                "type": "agent_status_updated",
+                "data": {"agent_id": agent_id, "status": status, "hypothesis": hypothesis}
+            }))
+        except Exception:
+            pass
         return True
-    
+
     async def close(self):
         pass
 
@@ -685,7 +775,7 @@ class ForgeAgent(BaseForgeAgent):
         # Configuration
         max_experiments = getattr(self.config, 'max_experiments', 50)
         plateau_patience = getattr(self.config, 'plateau_patience', 15)  # Stop after 15 failures in a row
-        improvement_threshold = getattr(self.config, 'improvement_threshold', 0.01)  # Minimum improvement to count
+        improvement_threshold = getattr(self.config, 'improvement_threshold', 0.0001)  # Minimum improvement to count
         
         # Get initial baseline to track improvements against
         initial_best = await self.get_global_best(self.config.template_id)
@@ -722,16 +812,16 @@ class ForgeAgent(BaseForgeAgent):
                 
                 if success:
                     experiment_count += 1
-                    
-                    # Check if this was an improvement
+
+                    # Check if global best moved since before this experiment
                     best_after = await self.get_global_best(self.config.template_id)
                     if best_after:
                         metric_after = best_after.metric
-                        
-                        if metric_after > metric_before + improvement_threshold:
+
+                        if metric_after > metric_before:
                             improvements_found += 1
                             consecutive_failures = 0  # Reset on improvement
-                            print(f"[{self.agent_name}] Improvement! {metric_before:.2f} → {metric_after:.2f} (+{((metric_after - metric_before) / metric_before * 100):.1f}%)")
+                            print(f"[{self.agent_name}] Improvement! {metric_before:.4f} → {metric_after:.4f} (+{((metric_after - metric_before) / max(metric_before, 1e-9) * 100):.1f}%)")
                         else:
                             consecutive_failures += 1
                             print(f"[{self.agent_name}] No improvement ({consecutive_failures}/{plateau_patience} failures)")
