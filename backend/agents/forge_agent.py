@@ -49,7 +49,7 @@ class DirectStoreAPI:
         exp, success = self.store.claim_experiment(req, hypothesis, mutation)
         return exp.id if success else None
     
-    async def publish_result(self, experiment_id, metric_after, status, reasoning):
+    async def publish_result(self, experiment_id, agent_id, template_id, metric_before, metric_after, status, reasoning):
         exp = self.store.publish_result(experiment_id, metric_after, status, reasoning)
         return exp is not None
     
