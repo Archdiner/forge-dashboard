@@ -3,11 +3,11 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
 
 export const TEMPLATES = [
-  { id: 'landing-page-cro', name: 'Landing Page CRO', description: 'Optimize headlines, CTAs, and copy for conversion' },
-  { id: 'prompt-optimization', name: 'Prompt Optimization', description: 'Improve AI prompts for better responses' },
-  { id: 'portfolio-optimization', name: 'Portfolio Optimization', description: 'Optimize asset allocation for Sharpe ratio' },
-  { id: 'email-outreach', name: 'Email Outreach', description: 'Optimize cold emails for reply rates' },
-  { id: 'dcf-model', name: 'DCF Model', description: 'Optimize financial assumptions to maximize IRR' },
+  { id: 'landing-page-cro',     name: 'Landing Page CRO',       description: 'Optimise headlines, CTAs, and copy for conversion rate' },
+  { id: 'structural',           name: 'Page Structure',          description: 'Optimise section order and layout via PostHog flags' },
+  { id: 'onboarding',           name: 'Onboarding Flow',         description: 'Reduce friction across steps to maximise completion rate' },
+  { id: 'pricing-page',         name: 'Pricing Page',            description: 'Optimise plan framing and CTAs to maximise upgrade rate' },
+  { id: 'feature-announcement', name: 'Feature Announcement',    description: 'Surface new features to drive adoption rate' },
 ] as const;
 
 export type TemplateId = typeof TEMPLATES[number]['id'];
@@ -54,75 +54,55 @@ export interface GlobalBest {
   last_updated: string;
 }
 
-// Fallback mock data for when API returns empty (scores on 0-100 CCS scale)
+// Fallback mock data for when API returns empty (metrics in production rate scale)
 const MOCK_EXPERIMENTS: Experiment[] = [
   {
-    id: 'exp-47',
-    agent_id: 'agent-2',
-    agent_name: 'Agent Beta',
+    id: 'exp-47', agent_id: 'agent-2', agent_name: 'Agent Beta',
     template_id: 'landing-page-cro',
-    hypothesis: 'Testing whether question-format headlines improve engagement',
+    hypothesis: 'Question-format headline to create curiosity gap',
     mutation: 'Changed headline to "Want to 10x your conversion rate?"',
-    metric_before: 63.4,
-    metric_after: 68.2,
-    status: 'success',
-    reasoning: 'Question-format headlines create curiosity gap. Based on Experiment #31.',
+    metric_before: 0.0374, metric_after: 0.0421, status: 'success',
+    reasoning: '+0.47pp CVR — question format increased engagement.',
     created_at: new Date(Date.now() - 2 * 60 * 1000).toISOString(),
     completed_at: new Date(Date.now() - 2 * 60 * 1000).toISOString(),
   },
   {
-    id: 'exp-46',
-    agent_id: 'agent-1',
-    agent_name: 'Agent Alpha',
+    id: 'exp-46', agent_id: 'agent-1', agent_name: 'Agent Alpha',
     template_id: 'landing-page-cro',
-    hypothesis: 'Testing shorter value propositions',
-    mutation: 'Shortened value props from 20 words to 8 words each',
-    metric_before: 64.8,
-    metric_after: 61.2,
-    status: 'failure',
-    reasoning: 'Too much brevity lost key value signals.',
+    hypothesis: 'Shorter value propositions to reduce cognitive load',
+    mutation: 'Shortened value props to 8 words each',
+    metric_before: 0.0389, metric_after: 0.0351, status: 'failure',
+    reasoning: '-0.38pp CVR — brevity lost key value signals.',
     created_at: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
     completed_at: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
   },
   {
-    id: 'exp-45',
-    agent_id: 'agent-3',
-    agent_name: 'Agent Gamma',
-    template_id: 'landing-page-cro',
-    hypothesis: 'Adding social proof with specific numbers',
-    mutation: 'Set social_proof to "Trusted by 2,847 growth teams"',
-    metric_before: 62.1,
-    metric_after: 65.8,
-    status: 'success',
-    reasoning: 'Specific numbers increase credibility.',
+    id: 'exp-45', agent_id: 'agent-3', agent_name: 'Agent Gamma',
+    template_id: 'onboarding',
+    hypothesis: 'Remove company_name field from profile step to reduce friction',
+    mutation: 'Removed company_name from step_fields.profile',
+    metric_before: 0.495, metric_after: 0.521, status: 'success',
+    reasoning: '+2.6pp completion — one less required field in step 2.',
     created_at: new Date(Date.now() - 8 * 60 * 1000).toISOString(),
     completed_at: new Date(Date.now() - 8 * 60 * 1000).toISOString(),
   },
   {
-    id: 'exp-44',
-    agent_id: 'agent-2',
-    agent_name: 'Agent Beta',
-    template_id: 'landing-page-cro',
-    hypothesis: 'Testing urgency in CTA button',
-    mutation: 'Changed cta_text to "Get Started Now — Limited Time"',
-    metric_before: 63.2,
-    metric_after: 60.5,
-    status: 'failure',
-    reasoning: 'Perceived as clickbait. Spam word detection penalized score.',
+    id: 'exp-44', agent_id: 'agent-2', agent_name: 'Agent Beta',
+    template_id: 'pricing-page',
+    hypothesis: 'CTA copy "Start Free — No Card Needed" to remove risk perception',
+    mutation: 'Updated cta_text.pro to "Start Free — No Card Needed"',
+    metric_before: 0.0378, metric_after: 0.0431, status: 'success',
+    reasoning: '+0.53pp upgrade rate — no-card framing reduces commitment anxiety.',
     created_at: new Date(Date.now() - 12 * 60 * 1000).toISOString(),
     completed_at: new Date(Date.now() - 12 * 60 * 1000).toISOString(),
   },
   {
-    id: 'exp-43',
-    agent_id: 'agent-1',
-    agent_name: 'Agent Alpha',
-    template_id: 'landing-page-cro',
-    hypothesis: 'Testing conversational tone in subheadline',
-    mutation: 'Set subheadline to "Finally, AI that actually works for you"',
-    metric_before: 61.5,
-    metric_after: 64.3,
-    status: 'success',
-    reasoning: 'Conversational tone reduces friction, improves readability score.',
+    id: 'exp-43', agent_id: 'agent-1', agent_name: 'Agent Alpha',
+    template_id: 'feature-announcement',
+    hypothesis: 'Move announcement from sidebar to popover for higher visibility',
+    mutation: 'Changed feature_position from "sidebar" to "popover"',
+    metric_before: 0.184, metric_after: 0.209, status: 'success',
+    reasoning: '+2.5pp adoption — popover intercepts attention more effectively.',
     created_at: new Date(Date.now() - 18 * 60 * 1000).toISOString(),
     completed_at: new Date(Date.now() - 18 * 60 * 1000).toISOString(),
   },
@@ -181,6 +161,28 @@ export interface CheckpointState {
   message: string;
 }
 
+export interface ActiveCycle {
+  project_id: string;
+  cycle_id: string;
+  state: 'pending_deployment' | 'measuring' | 'evaluated';
+  variant_text: string;
+  variant_config: Record<string, unknown>;
+  hypothesis: string;
+  baseline_metric: number;
+  measured_metric: number | null;
+  decision: 'kept' | 'reverted' | null;
+  cycle_window_hours: number;
+  created_at: string;
+  deployed_at: string | null;
+  measurement_ends_at: string | null;
+  evaluated_at: string | null;
+  seconds_remaining: number | null;
+}
+
+export interface CycleHistoryItem extends ActiveCycle {
+  decision: 'kept' | 'reverted';
+}
+
 export function useForgeStore(templateId: TemplateId = 'landing-page-cro') {
   const [experiments, setExperiments] = useState<Experiment[]>(MOCK_EXPERIMENTS);
   const [agents, setAgents] = useState<Agent[]>(MOCK_AGENTS);
@@ -189,6 +191,8 @@ export function useForgeStore(templateId: TemplateId = 'landing-page-cro') {
   const [currentTemplate, setCurrentTemplate] = useState<TemplateId>(templateId);
   const [isLoading, setIsLoading] = useState(false);
   const [checkpointState, setCheckpointState] = useState<CheckpointState | null>(null);
+  const [activeCycle, setActiveCycle] = useState<ActiveCycle | null>(null);
+  const [cycleHistory, setCycleHistory] = useState<CycleHistoryItem[]>([]);
   const wsRef = useRef<WebSocket | null>(null);
 
   const connectWebSocket = useCallback(() => {
@@ -269,6 +273,25 @@ export function useForgeStore(templateId: TemplateId = 'landing-page-cro') {
       case 'checkpoint_stopped':
       case 'checkpoint_redirected': {
         setCheckpointState(null);
+        break;
+      }
+      case 'variant_ready': {
+        const data = message as unknown as { cycle: ActiveCycle };
+        setActiveCycle(data.cycle);
+        break;
+      }
+      case 'deployment_confirmed': {
+        setActiveCycle(prev => prev ? { ...prev, state: 'measuring' } : null);
+        break;
+      }
+      case 'cycle_evaluated': {
+        const data = message as unknown as { metric: number; decision: 'kept' | 'reverted' };
+        setActiveCycle(prev => {
+          if (!prev) return null;
+          const completed = { ...prev, state: 'evaluated' as const, measured_metric: data.metric, decision: data.decision };
+          setCycleHistory(h => [...h, completed as CycleHistoryItem]);
+          return null; // clear active cycle after evaluation
+        });
         break;
       }
     }
@@ -390,6 +413,8 @@ export function useForgeStore(templateId: TemplateId = 'landing-page-cro') {
     startExperiment,
     createProject,
     checkpointState,
+    activeCycle,
+    cycleHistory,
     cost: {
       total: experiments.length * costPerExperiment,
       llm: experiments.length * costPerExperiment,

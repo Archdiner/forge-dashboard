@@ -1,11 +1,13 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './lib/auth';
 import Landing from './pages/Landing';
+import Demo from './pages/Demo';
 import Login from './pages/Login';
 import DashboardLayout from './pages/Dashboard/Layout';
 import ProjectsList from './pages/Dashboard/ProjectsList';
 import NewJob from './pages/Dashboard/NewJob';
 import ProjectDetails from './pages/Dashboard/ProjectDetails';
+import DemoPage from './pages/DemoPage';
 
 export default function App() {
     const { user, loading } = useAuth();
@@ -22,6 +24,7 @@ export default function App() {
         <Routes>
             {/* Public Pages */}
             <Route path="/" element={user ? <Navigate to="/dashboard" /> : <Landing />} />
+            <Route path="/demo" element={<Demo />} />
             <Route path="/login" element={user ? <Navigate to="/dashboard" /> : <Login />} />
 
             {/* Protected Dashboard */}
@@ -30,6 +33,9 @@ export default function App() {
                 <Route path="new" element={<NewJob />} />
                 <Route path="project/:id" element={<ProjectDetails />} />
             </Route>
+
+            {/* Public demo page — shows live layout changes as Forge optimizes */}
+            <Route path="/demo-page" element={<DemoPage />} />
 
             <Route path="*" element={<Navigate to="/" />} />
         </Routes>
