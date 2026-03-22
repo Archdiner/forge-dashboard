@@ -26,10 +26,10 @@ class InMemoryStore:
         self._init_default_data()
     
     def _init_default_data(self):
-        # Landing page CRO template — baseline CCS ~61.5 (computed via textstat)
+        # Landing page CRO template — baseline CVR 3.46% (CCS 61.5 → 0.010 + 0.615*0.040)
         self.global_best["landing-page-cro"] = GlobalBest(
             template_id="landing-page-cro",
-            metric=61.5,
+            metric=0.0346,
             config={
                 "headline": "The AI Platform for Growth",
                 "subheadline": "Enterprise-grade AI tools for modern teams",
@@ -46,87 +46,85 @@ class InMemoryStore:
             last_updated=datetime.now()
         )
 
-        # Prompt optimization template
-        self.global_best["prompt-optimization"] = GlobalBest(
-            template_id="prompt-optimization",
-            metric=0.5,  # 50% baseline accuracy
+        # Structural layout template — baseline CVR 3.72% (UX score 68 → 0.010 + 0.68*0.040)
+        self.global_best["structural"] = GlobalBest(
+            template_id="structural",
+            metric=0.0372,
             config={
-                "system_prompt": "You are a customer support classifier. Classify incoming emails into one of these categories: technical, billing, feature_request, complaint, or praise. Respond with just the category name.",
-                "few_shot_examples": []
+                "sections_order": ["hero", "features", "testimonials", "pricing", "cta"],
+                "hero_style": "left-aligned",
+                "hero_headline": "The AI Platform for Growth",
+                "hero_subheadline": "Enterprise-grade AI tools for modern teams",
+                "show_pricing": True,
+                "show_testimonials": True,
+                "pricing_position": "bottom",
+                "cta_text": "Start Free Trial",
+                "cta_style": "primary",
+                "value_prop_count": 3,
+                "social_proof_style": "logos",
             },
             experiment_count=0,
             last_updated=datetime.now()
         )
 
-        # Portfolio optimization template — baseline Sharpe ~0.366 (computed via Markowitz)
-        self.global_best["portfolio-optimization"] = GlobalBest(
-            template_id="portfolio-optimization",
-            metric=0.366,
+        # Onboarding flow — baseline completion rate 57.3% (friction score 78/100)
+        self.global_best["onboarding"] = GlobalBest(
+            template_id="onboarding",
+            metric=0.573,
             config={
-                "assets": {
-                    "US_Equities": 0.30,
-                    "Intl_Equities": 0.20,
-                    "Bonds": 0.30,
-                    "Real_Estate": 0.10,
-                    "Commodities": 0.05,
-                    "Cash": 0.05
+                "steps_order": ["welcome", "profile", "team", "first_action"],
+                "step_fields": {
+                    "welcome":      ["email", "password"],
+                    "profile":      ["name", "role", "company_name"],
+                    "team":         ["team_size", "use_case"],
+                    "first_action": ["action_type", "action_detail"],
                 },
-                "constraints": {
-                    "max_single_position": 0.40,
-                    "min_cash": 0.02,
-                    "rebalance_frequency": "monthly"
-                },
-                "risk_tolerance": "moderate"
+                "show_progress_bar":    True,
+                "show_skip_option":     False,
+                "tooltip_enabled":      True,
+                "helper_text_enabled":  True,
+                "required_fields_only": True,
             },
             experiment_count=0,
             last_updated=datetime.now()
         )
 
-        # Email outreach template — baseline CES ~84.5 (computed via heuristics)
-        self.global_best["email-outreach"] = GlobalBest(
-            template_id="email-outreach",
-            metric=84.5,
+        # Pricing page — baseline upgrade rate 4.30% (pricing score 80/100)
+        self.global_best["pricing-page"] = GlobalBest(
+            template_id="pricing-page",
+            metric=0.0430,
             config={
-                "subject_line": "Quick question about your team",
-                "body": "Hi {{first_name}}, I'd love to learn more about how your team handles [challenge]. Would a 15-minute call this week work?",
-                "cta": "Book a 15-min call"
+                "plans_order":      ["free", "pro", "enterprise"],
+                "default_plan":     "pro",
+                "show_annual":      True,
+                "show_monthly":     True,
+                "annual_default":   True,
+                "highlighted_plan": "pro",
+                "show_comparison":  True,
+                "cta_text": {
+                    "free":       "Get Started",
+                    "pro":        "Start Free Trial",
+                    "enterprise": "Contact Sales",
+                },
+                "features_list_length": 5,
             },
             experiment_count=0,
             last_updated=datetime.now()
         )
 
-        # DCF model template — baseline IRR ~18.9% (computed via Newton-Raphson)
-        self.global_best["dcf-model"] = GlobalBest(
-            template_id="dcf-model",
-            metric=0.1886,
+        # Feature announcement — baseline adoption rate 19.0% (discovery score 55/100)
+        self.global_best["feature-announcement"] = GlobalBest(
+            template_id="feature-announcement",
+            metric=0.190,
             config={
-                "company": "Target Company",
-                "scenario": "base",
-                "financials": {
-                    "base_revenue": 100_000_000,
-                    "base_ebitda": 20_000_000,
-                },
-                "assumptions": {
-                    "revenue_growth_y1": 0.25,
-                    "revenue_growth_y2": 0.20,
-                    "revenue_growth_y3": 0.18,
-                    "revenue_growth_y4": 0.15,
-                    "revenue_growth_y5": 0.12,
-                    "ebitda_margin": 0.20,
-                    "da_pct_revenue": 0.04,
-                    "tax_rate": 0.25,
-                    "capex_pct_revenue": 0.05,
-                    "nwc_change_pct": 0.02,
-                    "wacc": 0.12,
-                    "terminal_growth": 0.03,
-                    "exit_ev_ebitda": 15.0,
-                    "entry_ev_ebitda": 12.0,
-                },
-                "success_target": {
-                    "metric": "irr",
-                    "threshold": 0.20,
-                    "direction": "above",
-                },
+                "feature_position":  "sidebar",
+                "default_view":      "expanded",
+                "show_badge":        True,
+                "badge_text":        "New",
+                "show_tooltip":      True,
+                "tooltip_content":   "Check out this feature",
+                "auto_show_delay":   5000,
+                "dismissible":       True,
             },
             experiment_count=0,
             last_updated=datetime.now()

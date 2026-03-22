@@ -10,7 +10,7 @@ class EmailOutreachTemplate(BaseTemplate):
     
     name = "email-outreach"
     description = "Optimize cold emails for reply rates"
-    metric_name = "email_score"
+    metric_name = "reply_rate"
     metric_direction = "higher_is_better"
     
     def __init__(self):

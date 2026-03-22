@@ -323,7 +323,61 @@ class EvaluatorRegistry:
             ],
             source="template"
         ))
-        
+
+        # ─────────────────────────────────────────────────────────────────
+        # EVAL-SUITE - Real Metrics Evaluator (The "Real Forge")
+        # Uses actual test cases with ground truth to compute pass rate
+        # ─────────────────────────────────────────────────────────────────
+        self.register(EvaluatorSpec(
+            id="eval-suite",
+            name="Eval Suite Optimization",
+            category=EvaluatorCategory.ACCURACY,
+            input_format=InputFormat.TEXT,
+            editable_fields=["system_prompt", "few_shot_examples", "eval_suite"],
+            mutation_strategies={
+                "system_prompt": [
+                    MutationStrategy("add_examples", "Add few-shot examples", self._mutate_add_examples),
+                    MutationStrategy("add_format", "Add output format spec", self._mutate_add_context),
+                    MutationStrategy("add_constraints", "Add constraints/rules", self._mutate_add_context),
+                    MutationStrategy("add_reasoning", "Add step-by-step reasoning", self._mutate_add_context),
+                ]
+            },
+            metrics=[
+                MetricDefinition("pass_rate", "Test case pass rate", "higher_is_better", 1.0),
+                MetricDefinition("accuracy", "Correct answers", "higher_is_better", 0.0),
+            ],
+            primary_metric="pass_rate",
+            guardrails=[
+                GuardrailDefinition("pass_rate", 0.5, "above", "Below 50% pass rate"),
+            ],
+            source="template"
+        ))
+
+        # ─────────────────────────────────────────────────────────────────
+        # STRUCTURAL OPTIMIZATION - Conversion Evaluator
+        # ─────────────────────────────────────────────────────────────────
+        self.register(EvaluatorSpec(
+            id="structural",
+            name="Structural Optimization",
+            category=EvaluatorCategory.CONVERSION,
+            input_format=InputFormat.STRUCTURED,
+            editable_fields=["layout_order", "show_pricing", "cta_type"],
+            mutation_strategies={
+                "layout": [
+                    MutationStrategy("toggle", "Toggle feature flag", self._mutate_toggle),
+                    MutationStrategy("reorder", "Reorder sections", self._mutate_reorder),
+                ]
+            },
+            metrics=[
+                MetricDefinition("conversion_rate", "Conversion Rate", "higher_is_better", 1.0),
+            ],
+            primary_metric="conversion_rate",
+            guardrails=[
+                GuardrailDefinition("conversion_drop", 10.0, "below", "Conversion dropped too much"),
+            ],
+            source="template"
+        ))
+
         print(f"✓ Loaded {len(self._evaluators)} pre-built evaluators")
     
     def register(self, spec: EvaluatorSpec):
@@ -359,6 +413,10 @@ class EvaluatorRegistry:
         # In production, this would use an LLM
         
         description_lower = description.lower()
+
+        # Structural / Feature flags
+        if any(k in description_lower for k in ["structural", "feature flag", "layout", "page structure"]):
+            return {"evaluator_id": "structural", "confidence": 0.95}
 
         # DCF / financial model — check before generic "portfolio"
         if any(k in description_lower for k in [
@@ -596,6 +654,14 @@ class EvaluatorRegistry:
         if field in new_config:
             new_config[field] = new_config[field] + "\n\nExample: ..."
         return new_config
+
+    def _mutate_toggle(self, config: Dict, field: str) -> Dict:
+        """Toggle feature flag."""
+        return config.copy()
+
+    def _mutate_reorder(self, config: Dict, field: str) -> Dict:
+        """Reorder sections."""
+        return config.copy()
 
 
 # Global registry instance

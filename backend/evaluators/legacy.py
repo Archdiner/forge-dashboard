@@ -132,13 +132,17 @@ class LandingPageEvaluator(Evaluator):
             valence_score * 0.10 +
             value_score * 0.10
         )
-        
-        return round(ccs, 2)
+
+        # Map quality score (0-100) → realistic CVR (1.0% – 5.0%)
+        # Industry baseline for landing pages: ~3.5%; exceptional: ~5%
+        cvr = 0.010 + (ccs / 100) * 0.040
+        return round(cvr, 4)
     
     def _simple_compute(self, asset: Dict[str, Any]) -> float:
         text = self._build_text(asset)
         wc = len(text.split())
-        return max(0, 100 - (wc - 50) * 0.5)
+        ccs = max(0, 100 - (wc - 50) * 0.5)
+        return round(0.010 + (ccs / 100) * 0.040, 4)
     
     def _build_text(self, asset: Dict[str, Any]) -> str:
         parts = [
@@ -435,8 +439,11 @@ class EmailEvaluator(Evaluator):
             ask_score * 0.10 +
             spam_score * 0.15
         )
-        
-        return round(ces, 2)
+
+        # Map quality score (0-100) → realistic reply rate (2.0% – 9.0%)
+        # Industry cold email baseline: ~8%; exceptional: ~9%
+        reply_rate = 0.020 + (ces / 100) * 0.070
+        return round(reply_rate, 4)
     
     def compute_guardrails(self, asset: Dict[str, Any]) -> tuple[bool, list]:
         failures = []

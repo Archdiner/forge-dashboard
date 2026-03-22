@@ -10,7 +10,7 @@ class LandingPageTemplate(BaseTemplate):
     
     name = "landing-page-cro"
     description = "Optimize a landing page for conversion"
-    metric_name = "conversion_score"
+    metric_name = "conversion_rate"
     metric_direction = "higher_is_better"
     
     def __init__(self):
