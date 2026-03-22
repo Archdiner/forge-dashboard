@@ -65,6 +65,16 @@ class DirectStoreAPI:
     async def set_checkpoint_state(self, project_id, state):
         self.store.checkpoint_state[project_id] = state
         return True
+    
+    async def update_agent_status(self, agent_id, status, hypothesis=None):
+        if agent_id in self.store.agents:
+            self.store.agents[agent_id].status = status
+            self.store.agents[agent_id].current_hypothesis = hypothesis
+            self.store.agents[agent_id].last_active = datetime.now().isoformat()
+        return True
+    
+    async def close(self):
+        pass
 
 
 class ForgeAPI:
