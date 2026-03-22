@@ -11,6 +11,7 @@ const copper  = '#C47A2A';
 const ink     = '#1A1614';
 const inkMuted = 'rgba(26, 22, 20, 0.4)';
 const cream   = '#FAF8F5';
+const green   = '#10B981';
 
 const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
 
@@ -22,38 +23,296 @@ interface EvaluatorInfo {
     guardrails: { name: string; threshold: number; direction: string }[];
 }
 
-// What content the user actually pastes / describes per template type
+interface PostHogProject {
+    id: number;
+    name: string;
+    api_token: string;
+}
+
+interface MetricDef {
+    type: 'rate' | 'count' | 'hogsql';
+    display_name: string;
+    numerator_event?: string;
+    denominator_event?: string;
+    event?: string;
+    hogsql_query?: string;
+}
+
+type ExperimentMode = 'simulation' | 'backtest' | 'live';
+
+// Content placeholders per template
 const CONTENT_PLACEHOLDER: Record<string, string> = {
-    'landing-page-cro':   'Paste your landing page copy here (headline, subheadline, CTA, value props)…',
-    'email-outreach':     'Paste your email here (subject line, body, CTA)…',
-    'portfolio-optimization': 'Paste your current allocations here, e.g.:\nUS Equities: 40%\nBonds: 30%\nInternational: 20%\nCash: 10%',
-    'dcf-model':          'Paste your DCF assumptions here, e.g.:\nRevenue growth Y1: 25%\nEBITDA margin: 20%\nWACC: 12%\nExit EV/EBITDA: 15x\nEntry EV/EBITDA: 12x',
-    'prompt-optimization': 'Paste your current system prompt here…',
+    'landing-page-cro':     'Paste your landing page copy here (headline, subheadline, CTA, value props)…',
+    'structural':           'Paste your current section order, e.g.:\nsections_order: hero, features, testimonials, pricing, cta\nhero_style: left-aligned\ncta_style: primary',
+    'onboarding':           'Paste your onboarding steps, e.g.:\nsteps: welcome, profile, team, first_action\nwelcome fields: email, password\nprofile fields: name, role, company',
+    'pricing-page':         'Paste your pricing config, e.g.:\nplans: free, pro, enterprise\nhighlighted: pro\nannual default: yes\npro CTA: Start Free Trial',
+    'feature-announcement': 'Paste your announcement config, e.g.:\nposition: sidebar\nbadge: New\ntooltip: Check out this feature\nauto_show_delay: 5000ms',
 };
 
-// Success criteria hint per template
 const SUCCESS_HINT: Record<string, string> = {
-    'landing-page-cro':    'e.g., "I want a conversion score above 70 out of 100"',
-    'email-outreach':      'e.g., "I want an email score above 80 out of 100"',
-    'portfolio-optimization': 'e.g., "I want a Sharpe ratio above 0.8"',
-    'dcf-model':           'e.g., "I want IRR above 20%"',
-    'prompt-optimization': 'e.g., "I want classification accuracy above 90%"',
+    'landing-page-cro':     'e.g., "I want conversion rate above 5%"',
+    'structural':           'e.g., "I want conversion rate above 5%"',
+    'onboarding':           'e.g., "I want onboarding completion above 60%"',
+    'pricing-page':         'e.g., "I want upgrade click rate above 5%"',
+    'feature-announcement': 'e.g., "I want feature adoption above 25%"',
 };
 
 const EXAMPLE_PROBLEMS = [
     "Optimize my landing page for conversions",
-    "Improve my cold email reply rate",
-    "Improve my trading strategy's Sharpe ratio",
-    "Optimize my AI prompt for classification",
-    "Optimize my DCF model to hit 20% IRR",
-    "Optimize my stock pitch financial model",
+    "Optimize my page structure via feature flags",
+    "Improve my onboarding completion rate",
+    "Optimize my pricing page to drive upgrades",
+    "Increase feature adoption with better announcements",
 ];
+
+// Local specs — applied instantly when a pill is clicked, no API round-trip needed.
+const LOCAL_SPECS: Record<string, EvaluatorInfo> = {
+    "Optimize my landing page for conversions": {
+        id: 'landing-page-cro', name: 'Landing Page CRO',
+        editable_fields: ['headline', 'subheadline', 'cta_text', 'value_props', 'social_proof'],
+        metrics: [{ name: 'Conversion Rate', direction: 'higher_is_better', weight: 1 }],
+        guardrails: [{ name: 'readability', threshold: 30, direction: 'above' }],
+    },
+    "Optimize my page structure via feature flags": {
+        id: 'structural', name: 'Page Structure',
+        editable_fields: ['sections_order', 'hero_style', 'show_pricing', 'show_testimonials', 'cta_style'],
+        metrics: [{ name: 'Conversion Rate', direction: 'higher_is_better', weight: 1 }],
+        guardrails: [],
+    },
+    "Improve my onboarding completion rate": {
+        id: 'onboarding', name: 'Onboarding Flow',
+        editable_fields: ['steps_order', 'step_fields', 'show_progress_bar', 'show_skip_option', 'required_fields_only'],
+        metrics: [{ name: 'Completion Rate', direction: 'higher_is_better', weight: 1 }],
+        guardrails: [],
+    },
+    "Optimize my pricing page to drive upgrades": {
+        id: 'pricing-page', name: 'Pricing Page',
+        editable_fields: ['plans_order', 'highlighted_plan', 'annual_default', 'cta_text', 'show_comparison'],
+        metrics: [{ name: 'Upgrade Rate', direction: 'higher_is_better', weight: 1 }],
+        guardrails: [],
+    },
+    "Increase feature adoption with better announcements": {
+        id: 'feature-announcement', name: 'Feature Announcement',
+        editable_fields: ['feature_position', 'default_view', 'show_badge', 'badge_text', 'auto_show_delay'],
+        metrics: [{ name: 'Adoption Rate', direction: 'higher_is_better', weight: 1 }],
+        guardrails: [],
+    },
+};
 
 const AGENT_CONFIGS = [
     { count: 1, label: "Single Agent",       roles: ["explorer"],                             description: "One explorer agent. Fast, good for simple tasks." },
     { count: 2, label: "Explorer + Refiner", roles: ["explorer", "refiner"],                  description: "Broad exploration + fine-tuning of winners." },
     { count: 3, label: "Full Swarm",         roles: ["explorer", "refiner", "synthesizer"],   description: "Maximum diversity: explore, refine, and synthesize." },
 ];
+
+const MODE_OPTIONS: { mode: ExperimentMode; label: string; description: string; requiresPostHog: boolean }[] = [
+    {
+        mode: 'simulation',
+        label: 'Simulation',
+        description: 'Instant results via deterministic evaluators. No analytics needed. Great for testing.',
+        requiresPostHog: false,
+    },
+    {
+        mode: 'backtest',
+        label: 'Backtest',
+        description: 'Compares two historical windows from your PostHog data. Closes the real-analytics loop in minutes.',
+        requiresPostHog: true,
+    },
+    {
+        mode: 'live',
+        label: 'Live (24h cycles)',
+        description: 'Deploy variants to your site, measure real user behaviour over 24h+ windows. Production-grade.',
+        requiresPostHog: true,
+    },
+];
+
+// ─── PostHog Connection Panel ──────────────────────────────────────────────
+
+function PostHogConnect({
+    onConnected,
+}: {
+    onConnected: (apiKey: string, projects: PostHogProject[]) => void;
+}) {
+    const [apiKey, setApiKey] = useState('');
+    const [baseUrl, setBaseUrl] = useState('https://app.posthog.com');
+    const [verifying, setVerifying] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+
+    const handleVerify = async () => {
+        if (!apiKey.trim()) return;
+        setVerifying(true);
+        setError(null);
+        try {
+            const resp = await fetch(`${API_BASE}/connectors/posthog/verify`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ api_key: apiKey.trim(), base_url: baseUrl }),
+            });
+            const data = await resp.json();
+            if (data.success) {
+                onConnected(apiKey.trim(), data.projects ?? []);
+            } else {
+                setError(data.error ?? 'Verification failed');
+            }
+        } catch {
+            setError('Could not reach backend. Make sure the API server is running.');
+        } finally {
+            setVerifying(false);
+        }
+    };
+
+    return (
+        <div style={{ background: '#FFF', border: '1px solid rgba(26,22,20,0.08)', borderRadius: 12, padding: 20, marginBottom: 24 }}>
+            <div style={{ fontFamily: mono, fontSize: 10, color: inkMuted, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12 }}>
+                Connect PostHog
+            </div>
+            <p style={{ fontSize: 13, color: inkMuted, marginBottom: 16, lineHeight: 1.5 }}>
+                Paste your PostHog Personal API key. Forge will query your real analytics to measure experiment outcomes.
+            </p>
+            <input
+                type="password"
+                value={apiKey}
+                onChange={e => setApiKey(e.target.value)}
+                placeholder="phx_xxxxxxxxxxxxxxxxxxxx"
+                style={{ width: '100%', padding: '10px 12px', fontSize: 13, fontFamily: mono, border: '1px solid rgba(26,22,20,0.1)', borderRadius: 8, marginBottom: 10, boxSizing: 'border-box', background: cream }}
+            />
+            <input
+                type="text"
+                value={baseUrl}
+                onChange={e => setBaseUrl(e.target.value)}
+                placeholder="https://app.posthog.com (EU: https://eu.posthog.com)"
+                style={{ width: '100%', padding: '10px 12px', fontSize: 12, fontFamily: mono, border: '1px solid rgba(26,22,20,0.08)', borderRadius: 8, marginBottom: 12, boxSizing: 'border-box', color: inkMuted }}
+            />
+            {error && (
+                <div style={{ fontSize: 12, color: '#EF4444', marginBottom: 10, padding: '6px 10px', background: 'rgba(239,68,68,0.08)', borderRadius: 6 }}>
+                    {error}
+                </div>
+            )}
+            <button
+                onClick={handleVerify}
+                disabled={verifying || !apiKey.trim()}
+                style={{ padding: '9px 20px', fontSize: 13, fontFamily: font, background: copper, color: '#FFF', border: 'none', borderRadius: 7, cursor: verifying || !apiKey.trim() ? 'not-allowed' : 'pointer', opacity: verifying || !apiKey.trim() ? 0.6 : 1 }}
+            >
+                {verifying ? 'Verifying…' : 'Connect PostHog'}
+            </button>
+        </div>
+    );
+}
+
+// ─── Metric Selector ────────────────────────────────────────────────────────
+
+function MetricSelector({
+    phApiKey,
+    phProjectId,
+    phBaseUrl,
+    onMetricSelected,
+}: {
+    phApiKey: string;
+    phProjectId: number;
+    phBaseUrl: string;
+    onMetricSelected: (metric: MetricDef) => void;
+}) {
+    const [events, setEvents] = useState<string[]>([]);
+    const [loading, setLoading] = useState(false);
+    const [metricType, setMetricType] = useState<'rate' | 'count'>('rate');
+    const [numerator, setNumerator] = useState('');
+    const [denominator, setDenominator] = useState('');
+    const [countEvent, setCountEvent] = useState('');
+
+    const loadEvents = async () => {
+        setLoading(true);
+        try {
+            const resp = await fetch(
+                `${API_BASE}/connectors/posthog/events/${phProjectId}?api_key=${encodeURIComponent(phApiKey)}&base_url=${encodeURIComponent(phBaseUrl)}`
+            );
+            const data = await resp.json();
+            setEvents(data.events ?? []);
+        } catch {
+            setEvents([]);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // Load events on mount
+    useState(() => { loadEvents(); });
+
+    const handleConfirm = () => {
+        if (metricType === 'rate' && numerator && denominator) {
+            onMetricSelected({
+                type: 'rate',
+                display_name: `${numerator} / ${denominator}`,
+                numerator_event: numerator,
+                denominator_event: denominator,
+            });
+        } else if (metricType === 'count' && countEvent) {
+            onMetricSelected({
+                type: 'count',
+                display_name: `${countEvent} count`,
+                event: countEvent,
+            });
+        }
+    };
+
+    const selectStyle = {
+        width: '100%', padding: '8px 12px', fontSize: 12, fontFamily: mono,
+        border: '1px solid rgba(26,22,20,0.1)', borderRadius: 7, background: '#FFF',
+        color: ink, boxSizing: 'border-box' as const, marginBottom: 8,
+    };
+
+    return (
+        <div style={{ background: '#FFF', border: '1px solid rgba(26,22,20,0.08)', borderRadius: 12, padding: 20, marginBottom: 24 }}>
+            <div style={{ fontFamily: mono, fontSize: 10, color: inkMuted, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12 }}>
+                What metric are we maximising?
+            </div>
+
+            <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+                {(['rate', 'count'] as const).map(t => (
+                    <button key={t} onClick={() => setMetricType(t)}
+                        style={{ padding: '5px 14px', fontSize: 12, fontFamily: font, borderRadius: 20, border: `1px solid ${metricType === t ? copper : 'rgba(26,22,20,0.1)'}`, background: metricType === t ? 'rgba(196,122,42,0.08)' : 'transparent', color: metricType === t ? copper : inkMuted, cursor: 'pointer' }}>
+                        {t === 'rate' ? 'Conversion Rate' : 'Event Count'}
+                    </button>
+                ))}
+            </div>
+
+            {loading && <div style={{ fontSize: 12, color: inkMuted }}>Loading events from PostHog…</div>}
+
+            {metricType === 'rate' && (
+                <div>
+                    <label style={{ fontSize: 11, color: inkMuted, fontFamily: mono, display: 'block', marginBottom: 4 }}>NUMERATOR (the goal event)</label>
+                    <select value={numerator} onChange={e => setNumerator(e.target.value)} style={selectStyle}>
+                        <option value="">Select event…</option>
+                        {events.map(e => <option key={e} value={e}>{e}</option>)}
+                    </select>
+                    <label style={{ fontSize: 11, color: inkMuted, fontFamily: mono, display: 'block', marginBottom: 4 }}>DENOMINATOR (the entry event)</label>
+                    <select value={denominator} onChange={e => setDenominator(e.target.value)} style={selectStyle}>
+                        <option value="">Select event…</option>
+                        {events.map(e => <option key={e} value={e}>{e}</option>)}
+                    </select>
+                </div>
+            )}
+
+            {metricType === 'count' && (
+                <div>
+                    <label style={{ fontSize: 11, color: inkMuted, fontFamily: mono, display: 'block', marginBottom: 4 }}>EVENT TO COUNT</label>
+                    <select value={countEvent} onChange={e => setCountEvent(e.target.value)} style={selectStyle}>
+                        <option value="">Select event…</option>
+                        {events.map(e => <option key={e} value={e}>{e}</option>)}
+                    </select>
+                </div>
+            )}
+
+            <button
+                onClick={handleConfirm}
+                disabled={metricType === 'rate' ? !numerator || !denominator : !countEvent}
+                style={{ marginTop: 4, padding: '8px 18px', fontSize: 12, fontFamily: font, background: green, color: '#FFF', border: 'none', borderRadius: 7, cursor: 'pointer', opacity: (metricType === 'rate' ? !numerator || !denominator : !countEvent) ? 0.5 : 1 }}>
+                Set Metric
+            </button>
+        </div>
+    );
+}
+
+// ─── Main component ──────────────────────────────────────────────────────────
 
 export default function NewJob() {
     const { user } = useAuth();
@@ -70,36 +329,55 @@ export default function NewJob() {
     const [confidence,         setConfidence]         = useState<number>(0);
     const [error,              setError]              = useState<string | null>(null);
 
+    // PostHog / mode state
+    const [experimentMode,  setExperimentMode]  = useState<ExperimentMode>('simulation');
+    const [phConnected,     setPhConnected]     = useState(false);
+    const [phApiKey,        setPhApiKey]        = useState('');
+    const [phProjects,      setPhProjects]      = useState<PostHogProject[]>([]);
+    const [phProjectId,     setPhProjectId]     = useState<number>(0);
+    const [phBaseUrl,       _setPhBaseUrl]      = useState('https://app.posthog.com');
+    const [phMetric,        setPhMetric]        = useState<MetricDef | null>(null);
+    const [cycleWindowHours, setCycleWindowHours] = useState(24);
+
+    const handlePostHogConnected = (apiKey: string, projects: PostHogProject[]) => {
+        setPhApiKey(apiKey);
+        setPhProjects(projects);
+        setPhConnected(true);
+        if (projects.length === 1) setPhProjectId(projects[0].id);
+    };
+
     const handleAnalyze = async () => {
         if (!problemDescription.trim()) return;
-
         setAnalyzing(true);
         setError(null);
 
+        // Apply local spec instantly so the form is never blocked
+        const localSpec = LOCAL_SPECS[problemDescription] ?? LOCAL_SPECS["Optimize my landing page for conversions"];
+        setAnalyzedSpec(localSpec);
+        setConfidence(0.85);
+
+        // Try to get a refined spec from the API in the background
         try {
             const response = await fetch(`${API_BASE}/evaluators/recommend`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ description: problemDescription }),
             });
-
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-            const data = await response.json();
-
-            if (data.spec) {
-                setAnalyzedSpec({
-                    id: data.recommended_evaluator,
-                    name: data.spec.name,
-                    editable_fields: data.spec.editable_fields,
-                    metrics: data.spec.metrics,
-                    guardrails: data.spec.guardrails,
-                });
-                setConfidence(data.confidence);
+            if (response.ok) {
+                const data = await response.json();
+                if (data.spec && data.confidence >= 0.7) {
+                    setAnalyzedSpec({
+                        id: data.recommended_evaluator,
+                        name: data.spec.name,
+                        editable_fields: data.spec.editable_fields,
+                        metrics: data.spec.metrics,
+                        guardrails: data.spec.guardrails,
+                    });
+                    setConfidence(data.confidence);
+                }
             }
-        } catch (err) {
-            console.error('Failed to analyze:', err);
-            setError('Could not connect to backend. Make sure the API server is running on port 8000.');
+        } catch {
+            // Local spec already set above — no need to show an error
         } finally {
             setAnalyzing(false);
         }
@@ -108,11 +386,11 @@ export default function NewJob() {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!user) return;
-
         setLoading(true);
 
         const template_id = analyzedSpec?.id || 'landing-page-cro';
         const agentConfig = AGENT_CONFIGS.find(a => a.count === agentCount);
+        const modeRequiresPostHog = experimentMode !== 'simulation';
 
         // 1. Save project to Supabase
         const { data, error: dbError } = await supabase
@@ -123,75 +401,69 @@ export default function NewJob() {
                 description: problemDescription,
                 template_id,
                 config: {
-                    spec:            analyzedSpec,
-                    content_input:   contentInput,
-                    success_criteria: successCriteria,
-                    agent_count:     agentCount,
-                    agent_roles:     agentConfig?.roles,
+                    spec:              analyzedSpec,
+                    content_input:     contentInput,
+                    success_criteria:  successCriteria,
+                    agent_count:       agentCount,
+                    agent_roles:       agentConfig?.roles,
+                    experiment_mode:   experimentMode,
+                    posthog_project_id: phProjectId || null,
+                    cycle_window_hours: cycleWindowHours,
                 },
-                status: 'active'
+                status: 'active',
             })
             .select()
             .single();
 
-        if (dbError || !data) {
-            // Fallback: demo mode without Supabase
-            setLoading(false);
-            const demoId = `demo-${Date.now()}`;
+        const projectId = data?.id ?? `demo-${Date.now()}`;
+        const isDemo = !data || !!dbError;
+        setLoading(false);
 
-            // Initialize with user's content
-            await fetch(`${API_BASE}/projects/${demoId}/initialize`, {
+        // 2. Store PostHog config if applicable
+        if (modeRequiresPostHog && phConnected && phProjectId && phMetric) {
+            await fetch(`${API_BASE}/projects/${projectId}/posthog`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    template_id,
-                    content_input: contentInput,
+                    personal_api_key: phApiKey,
+                    posthog_project_id: phProjectId,
+                    base_url: phBaseUrl,
+                    metric: phMetric,
+                    cycle_window_hours: cycleWindowHours,
                 }),
             }).catch(() => null);
-
-            // Kick off agents in demo mode
-            await fetch(`${API_BASE}/projects/${demoId}/start`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    template_id,
-                    agent_count: agentCount,
-                    roles: agentConfig?.roles,
-                }),
-            }).catch(() => null);
-
-            navigate(`/dashboard/project/${demoId}?template=${template_id}`);
-            return;
         }
 
-        // 2b. Initialize project with user's content
-        await fetch(`${API_BASE}/projects/${data.id}/initialize`, {
+        // 3. Initialize project with user content
+        await fetch(`${API_BASE}/projects/${projectId}/initialize`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                template_id,
-                content_input: contentInput,
-            }),
+            body: JSON.stringify({ template_id, content_input: contentInput }),
         }).catch(() => null);
 
-        // 2c. Start agents for the saved project
-        await fetch(`${API_BASE}/projects/${data.id}/start`, {
+        // 4. Start agents
+        await fetch(`${API_BASE}/projects/${projectId}/start`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 template_id,
                 agent_count: agentCount,
                 roles: agentConfig?.roles,
+                experiment_mode: experimentMode,
             }),
         }).catch(() => null);
 
-        setLoading(false);
-        navigate(`/dashboard/project/${data.id}`);
+        if (isDemo) {
+            navigate(`/dashboard/project/${projectId}?template=${template_id}`);
+        } else {
+            navigate(`/dashboard/project/${projectId}`);
+        }
     };
 
-    const primaryMetric    = analyzedSpec?.metrics?.[0];
+    const primaryMetric      = analyzedSpec?.metrics?.[0];
     const contentPlaceholder = CONTENT_PLACEHOLDER[analyzedSpec?.id || ''] ?? 'Paste your content here…';
     const successHint        = SUCCESS_HINT[analyzedSpec?.id || ''] ?? 'e.g., "I want the metric above X"';
+    const selectedMode       = MODE_OPTIONS.find(m => m.mode === experimentMode)!;
 
     return (
         <div style={{ maxWidth: 700 }}>
@@ -199,8 +471,100 @@ export default function NewJob() {
                 What do you want to optimize?
             </h1>
             <p style={{ fontSize: 15, color: inkMuted, marginBottom: 32, maxWidth: 520 }}>
-                Describe your problem. FORGE picks the right metrics, runs experiments overnight, and surfaces the best variant.
+                Describe your problem. FORGE picks the right metrics, runs experiments, and surfaces the best variant — validated by real user behaviour.
             </p>
+
+            {/* ── Experiment Mode ── */}
+            <div style={{ marginBottom: 28 }}>
+                <div style={{ fontFamily: mono, fontSize: 10, color: inkMuted, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12 }}>
+                    Experiment Mode
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+                    {MODE_OPTIONS.map(opt => (
+                        <div key={opt.mode} onClick={() => setExperimentMode(opt.mode)}
+                            style={{ padding: 14, border: `1px solid ${experimentMode === opt.mode ? copper : 'rgba(26,22,20,0.08)'}`, borderRadius: 8, cursor: 'pointer', background: experimentMode === opt.mode ? 'rgba(196,122,42,0.04)' : '#FFF', transition: 'all 0.15s' }}>
+                            <div style={{ fontFamily: mono, fontSize: 11, fontWeight: 600, color: experimentMode === opt.mode ? copper : ink, marginBottom: 4 }}>
+                                {opt.label}
+                            </div>
+                            <div style={{ fontSize: 11, color: inkMuted, lineHeight: 1.45 }}>{opt.description}</div>
+                            {opt.requiresPostHog && (
+                                <div style={{ marginTop: 8, fontFamily: mono, fontSize: 9, color: experimentMode === opt.mode ? copper : inkMuted, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                                    Requires PostHog
+                                </div>
+                            )}
+                        </div>
+                    ))}
+                </div>
+            </div>
+
+            {/* ── PostHog Connection (shown when mode requires it) ── */}
+            {selectedMode.requiresPostHog && !phConnected && (
+                <PostHogConnect onConnected={handlePostHogConnected} />
+            )}
+
+            {/* ── PostHog Connected Banner ── */}
+            {phConnected && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: 8, marginBottom: 16 }}>
+                    <div style={{ width: 8, height: 8, borderRadius: '50%', background: green }} />
+                    <span style={{ fontSize: 13, color: green, fontFamily: font }}>PostHog connected</span>
+                    <span style={{ fontSize: 12, color: inkMuted, marginLeft: 4 }}>
+                        {phProjects.length} project{phProjects.length !== 1 ? 's' : ''} available
+                    </span>
+                    <button onClick={() => { setPhConnected(false); setPhProjects([]); setPhMetric(null); }}
+                        style={{ marginLeft: 'auto', fontSize: 11, color: inkMuted, background: 'transparent', border: 'none', cursor: 'pointer' }}>
+                        Disconnect
+                    </button>
+                </div>
+            )}
+
+            {/* ── PostHog Project selector ── */}
+            {phConnected && phProjects.length > 1 && (
+                <div style={{ marginBottom: 16 }}>
+                    <label style={{ fontFamily: mono, fontSize: 10, color: inkMuted, textTransform: 'uppercase', letterSpacing: 1, display: 'block', marginBottom: 6 }}>PostHog Project</label>
+                    <select value={phProjectId} onChange={e => setPhProjectId(Number(e.target.value))}
+                        style={{ padding: '9px 12px', fontSize: 13, fontFamily: font, border: '1px solid rgba(26,22,20,0.1)', borderRadius: 8, background: '#FFF', color: ink, width: '100%', boxSizing: 'border-box' }}>
+                        <option value={0}>Select project…</option>
+                        {phProjects.map(p => <option key={p.id} value={p.id}>{p.name} (#{p.id})</option>)}
+                    </select>
+                </div>
+            )}
+
+            {/* ── Metric Selector ── */}
+            {phConnected && phProjectId > 0 && !phMetric && (
+                <MetricSelector
+                    phApiKey={phApiKey}
+                    phProjectId={phProjectId}
+                    phBaseUrl={phBaseUrl}
+                    onMetricSelected={m => setPhMetric(m)}
+                />
+            )}
+
+            {/* ── Metric Confirmed Banner ── */}
+            {phMetric && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: 8, marginBottom: 16 }}>
+                    <div style={{ width: 8, height: 8, borderRadius: '50%', background: green }} />
+                    <span style={{ fontSize: 13, color: green, fontFamily: font }}>Metric: {phMetric.display_name}</span>
+                    <button onClick={() => setPhMetric(null)} style={{ marginLeft: 'auto', fontSize: 11, color: inkMuted, background: 'transparent', border: 'none', cursor: 'pointer' }}>Change</button>
+                </div>
+            )}
+
+            {/* ── Cycle Window (live mode) ── */}
+            {experimentMode === 'live' && phConnected && (
+                <div style={{ marginBottom: 20 }}>
+                    <label style={{ fontFamily: mono, fontSize: 10, color: inkMuted, textTransform: 'uppercase', letterSpacing: 1, display: 'block', marginBottom: 8 }}>Measurement Window</label>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                        {[24, 48, 72].map(h => (
+                            <button key={h} onClick={() => setCycleWindowHours(h)}
+                                style={{ padding: '6px 16px', fontSize: 12, fontFamily: font, borderRadius: 20, border: `1px solid ${cycleWindowHours === h ? copper : 'rgba(26,22,20,0.1)'}`, background: cycleWindowHours === h ? 'rgba(196,122,42,0.08)' : 'transparent', color: cycleWindowHours === h ? copper : inkMuted, cursor: 'pointer' }}>
+                                {h}h
+                            </button>
+                        ))}
+                    </div>
+                    <p style={{ fontSize: 11, color: inkMuted, marginTop: 6 }}>
+                        How long each variant runs before PostHog measures the result.
+                    </p>
+                </div>
+            )}
 
             {/* ── Problem Description ── */}
             <div style={{ marginBottom: 24 }}>
@@ -219,11 +583,18 @@ export default function NewJob() {
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 28 }}>
                 {EXAMPLE_PROBLEMS.map((example, i) => (
                     <button key={i}
-                        onClick={async () => { 
-                            setSelectedExample(i); 
-                            setProblemDescription(example); 
-                            setAnalyzedSpec(null);
-                            // Auto-analyze on example select
+                        onClick={async () => {
+                            setSelectedExample(i);
+                            setProblemDescription(example);
+
+                            // Apply local spec instantly — form is available immediately
+                            const localSpec = LOCAL_SPECS[example];
+                            if (localSpec) {
+                                setAnalyzedSpec(localSpec);
+                                setConfidence(0.85);
+                            }
+
+                            // Refine in background via API
                             setAnalyzing(true);
                             try {
                                 const response = await fetch(`${API_BASE}/evaluators/recommend`, {
@@ -231,19 +602,21 @@ export default function NewJob() {
                                     headers: { 'Content-Type': 'application/json' },
                                     body: JSON.stringify({ description: example }),
                                 });
-                                const data = await response.json();
-                                if (data.spec) {
-                                    setAnalyzedSpec({
-                                        id: data.recommended_evaluator,
-                                        name: data.spec.name,
-                                        editable_fields: data.spec.editable_fields,
-                                        metrics: data.spec.metrics,
-                                        guardrails: data.spec.guardrails,
-                                    });
-                                    setConfidence(data.confidence);
+                                if (response.ok) {
+                                    const data = await response.json();
+                                    if (data.spec && data.confidence >= 0.7) {
+                                        setAnalyzedSpec({
+                                            id: data.recommended_evaluator,
+                                            name: data.spec.name,
+                                            editable_fields: data.spec.editable_fields,
+                                            metrics: data.spec.metrics,
+                                            guardrails: data.spec.guardrails,
+                                        });
+                                        setConfidence(data.confidence);
+                                    }
                                 }
-                            } catch (err) {
-                                console.error('Auto-analyze failed:', err);
+                            } catch {
+                                // Local spec already set — silent fallback
                             } finally {
                                 setAnalyzing(false);
                             }
@@ -255,22 +628,26 @@ export default function NewJob() {
             </div>
 
             {/* ── Analyze Button ── */}
-            <div style={{ marginBottom: 32 }}>
-                <button onClick={handleAnalyze} disabled={analyzing || !problemDescription.trim()}
-                    style={{ padding: '12px 24px', fontSize: 14, fontWeight: 500, fontFamily: font, background: copper, color: '#FFF', border: 'none', borderRadius: 8, cursor: analyzing ? 'not-allowed' : 'pointer', opacity: (analyzing || !problemDescription.trim()) ? 0.6 : 1 }}>
-                    {analyzing ? 'Analyzing…' : 'Analyze Problem'}
-                </button>
-                {error && (
-                    <div style={{ fontSize: 12, color: '#EF4444', marginTop: 8, padding: '8px 12px', background: 'rgba(239,68,68,0.1)', borderRadius: 6 }}>
-                        {error}
-                    </div>
-                )}
-            </div>
+            {!analyzedSpec && (
+                <div style={{ marginBottom: 32 }}>
+                    <button onClick={handleAnalyze} disabled={analyzing || !problemDescription.trim()}
+                        style={{ padding: '12px 24px', fontSize: 14, fontWeight: 500, fontFamily: font, background: copper, color: '#FFF', border: 'none', borderRadius: 8, cursor: analyzing ? 'not-allowed' : 'pointer', opacity: (analyzing || !problemDescription.trim()) ? 0.6 : 1 }}>
+                        {analyzing ? 'Analyzing…' : '→ Continue'}
+                    </button>
+                    <span style={{ fontSize: 12, color: inkMuted, marginLeft: 12 }}>
+                        or click an example above
+                    </span>
+                    {error && (
+                        <div style={{ fontSize: 12, color: '#EF4444', marginTop: 8, padding: '8px 12px', background: 'rgba(239,68,68,0.1)', borderRadius: 6 }}>
+                            {error}
+                        </div>
+                    )}
+                </div>
+            )}
 
             {/* ── After Analysis ── */}
             {analyzedSpec && (
                 <div style={{ marginBottom: 32 }}>
-
                     {/* Metric spec card */}
                     <div style={{ background: '#FFF', border: '1px solid rgba(26,22,20,0.08)', borderRadius: 12, padding: 24, marginBottom: 24 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
@@ -285,13 +662,19 @@ export default function NewJob() {
 
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
                             <div>
-                                <div style={{ fontFamily: mono, fontSize: 10, color: inkMuted, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>Primary Metric</div>
-                                <div style={{ fontSize: 18, fontWeight: 600 }}>{primaryMetric?.name || 'metric'}</div>
+                                <div style={{ fontFamily: mono, fontSize: 10, color: inkMuted, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>
+                                    {experimentMode !== 'simulation' && phMetric ? 'PostHog Metric' : 'Primary Metric'}
+                                </div>
+                                <div style={{ fontSize: 18, fontWeight: 600 }}>
+                                    {experimentMode !== 'simulation' && phMetric
+                                        ? phMetric.display_name
+                                        : (primaryMetric?.name || 'metric')}
+                                </div>
                             </div>
                             <div>
-                                <div style={{ fontFamily: mono, fontSize: 10, color: inkMuted, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>Optimizing for</div>
-                                <div style={{ fontSize: 16, fontWeight: 500, color: primaryMetric?.direction === 'higher_is_better' ? '#10B981' : '#EF4444' }}>
-                                    {primaryMetric?.direction === 'higher_is_better' ? '↑ Maximize' : '↓ Minimize'}
+                                <div style={{ fontFamily: mono, fontSize: 10, color: inkMuted, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>Mode</div>
+                                <div style={{ fontSize: 16, fontWeight: 500, color: experimentMode === 'live' ? green : experimentMode === 'backtest' ? copper : inkMuted }}>
+                                    {experimentMode === 'live' ? '⬆ Live 24h cycles' : experimentMode === 'backtest' ? '⟳ Backtest' : '⚡ Simulation'}
                                 </div>
                             </div>
                         </div>
@@ -306,19 +689,6 @@ export default function NewJob() {
                                 ))}
                             </div>
                         </div>
-
-                        {analyzedSpec.guardrails?.length > 0 && (
-                            <div style={{ marginTop: 16 }}>
-                                <div style={{ fontFamily: mono, fontSize: 10, color: inkMuted, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>Guardrails (agents cannot violate these)</div>
-                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                                    {analyzedSpec.guardrails?.map(g => (
-                                        <span key={g.name} style={{ padding: '3px 10px', background: cream, color: inkMuted, fontSize: 11, fontFamily: mono, borderRadius: 4 }}>
-                                            {g.name}: {g.direction} {g.threshold}
-                                        </span>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
                     </div>
 
                     {/* ── Content Input ── */}
