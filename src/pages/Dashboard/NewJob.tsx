@@ -434,14 +434,7 @@ export default function NewJob() {
             }).catch(() => null);
         }
 
-        // 3. Initialize project with user content
-        await fetch(`${API_BASE}/projects/${projectId}/initialize`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ template_id, content_input: contentInput }),
-        }).catch(() => null);
-
-        // 4. Start agents
+        // 3. Start agents (always demo_mode for now — real PostHog mode uses live data)
         await fetch(`${API_BASE}/projects/${projectId}/start`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -450,6 +443,7 @@ export default function NewJob() {
                 agent_count: agentCount,
                 roles: agentConfig?.roles,
                 experiment_mode: experimentMode,
+                demo_mode: true,
             }),
         }).catch(() => null);
 
@@ -562,6 +556,44 @@ export default function NewJob() {
                     </div>
                     <p style={{ fontSize: 11, color: inkMuted, marginTop: 6 }}>
                         How long each variant runs before PostHog measures the result.
+                    </p>
+                </div>
+            )}
+
+            {/* ── Forge.js Snippet (live mode) ── */}
+            {experimentMode === 'live' && phConnected && (
+                <div style={{
+                    marginBottom: 24,
+                    background: 'rgba(16,185,129,0.04)',
+                    border: '1px solid rgba(16,185,129,0.15)',
+                    borderRadius: 10,
+                    padding: 20,
+                }}>
+                    <div style={{ fontFamily: mono, fontSize: 10, color: '#10B981', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10, fontWeight: 600 }}>
+                        Install forge.js (one-time setup)
+                    </div>
+                    <p style={{ fontSize: 12, color: inkMuted, lineHeight: 1.6, marginBottom: 12 }}>
+                        Add this script tag to your site so Forge can automatically apply variants via PostHog feature flags.
+                        No code changes needed — just paste it before {'</body>'}.
+                    </p>
+                    <div style={{
+                        background: '#FFF',
+                        border: '1px solid rgba(26,22,20,0.08)',
+                        borderRadius: 6,
+                        padding: 12,
+                        fontFamily: mono,
+                        fontSize: 11,
+                        lineHeight: 1.5,
+                        color: ink,
+                        wordBreak: 'break-all',
+                        marginBottom: 10,
+                    }}>
+                        {`<script src="${API_BASE}/forge.js" data-project="YOUR_PROJECT_ID" data-api="${API_BASE}"></script>`}
+                    </div>
+                    <p style={{ fontSize: 11, color: inkMuted, lineHeight: 1.5 }}>
+                        Then annotate key elements with <code style={{ fontFamily: mono, fontSize: 10, background: 'rgba(26,22,20,0.05)', padding: '1px 4px', borderRadius: 3 }}>data-forge</code> attributes
+                        (e.g., <code style={{ fontFamily: mono, fontSize: 10, background: 'rgba(26,22,20,0.05)', padding: '1px 4px', borderRadius: 3 }}>{'<h1 data-forge="headline">'}</code>).
+                        Forge handles the rest.
                     </p>
                 </div>
             )}

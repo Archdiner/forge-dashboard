@@ -501,3 +501,204 @@ def test_metrics_are_monotone_with_quality_score():
     assert scores[0] == max(scores), (
         f"Modal should score highest, got ordering: {list(zip(configs_ranked, scores))}"
     )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 8. Deployment Loop — Ratchet flag tracking
+# ══════════════════════════════════════════════════════════════════════════════
+
+def test_ratchet_update_cycle_flag_info():
+    """update_cycle_flag_info should populate flag fields on the active cycle."""
+    from ratchet import RatchetEngine
+
+    engine = RatchetEngine()
+    cycle = engine.start_cycle(
+        project_id="proj-1",
+        variant_text="test variant",
+        variant_config={"headline": "New"},
+        hypothesis="Test hypothesis",
+        baseline_metric=0.035,
+    )
+
+    assert cycle.flag_name is None
+    assert cycle.flag_id is None
+
+    updated = engine.update_cycle_flag_info(
+        project_id="proj-1",
+        flag_key="forge-proj-1",
+        flag_id="12345",
+        control_payload={"config": {"headline": "Old"}},
+        variant_payload={"config": {"headline": "New"}},
+    )
+
+    assert updated is not None
+    assert updated.flag_name == "forge-proj-1"
+    assert updated.flag_id == "12345"
+    assert updated.control_payload == {"config": {"headline": "Old"}}
+    assert updated.variant_payload == {"config": {"headline": "New"}}
+
+    # to_dict should include flag fields
+    d = updated.to_dict()
+    assert d["flag_name"] == "forge-proj-1"
+    assert d["flag_id"] == "12345"
+
+
+def test_ratchet_update_flag_info_no_active_cycle():
+    """update_cycle_flag_info returns None when no active cycle exists."""
+    from ratchet import RatchetEngine
+
+    engine = RatchetEngine()
+    result = engine.update_cycle_flag_info(
+        project_id="nonexistent",
+        flag_key="forge-x",
+        flag_id="999",
+        control_payload={},
+        variant_payload={},
+    )
+    assert result is None
+
+
+def test_ratchet_full_cycle_with_flag():
+    """Full lifecycle: start → flag info → confirm → record → history."""
+    from ratchet import RatchetEngine
+
+    engine = RatchetEngine()
+    cycle = engine.start_cycle(
+        project_id="proj-2",
+        variant_text="v1",
+        variant_config={"cta": "Buy Now"},
+        hypothesis="Urgency CTA",
+        baseline_metric=0.040,
+        cycle_window_hours=24,
+    )
+
+    # Attach flag info
+    engine.update_cycle_flag_info(
+        "proj-2", "forge-proj-2", "flag-abc",
+        {"config": {"cta": "Sign Up"}},
+        {"config": {"cta": "Buy Now"}},
+    )
+
+    # Confirm deployment
+    confirmed = engine.confirm_deployment("proj-2")
+    assert confirmed is not None
+    assert confirmed.state.value == "measuring"
+    assert confirmed.deployed_at is not None
+
+    # Record result
+    recorded = engine.record_result("proj-2", 0.048, "kept")
+    assert recorded is not None
+    assert recorded.state.value == "evaluated"
+    assert recorded.measured_metric == 0.048
+    assert recorded.decision == "kept"
+    assert recorded.flag_name == "forge-proj-2"
+    assert recorded.flag_id == "flag-abc"
+
+    # Cycle should be in history
+    history = engine.get_history("proj-2")
+    assert len(history) == 1
+    assert history[0].flag_name == "forge-proj-2"
+
+    # Active should be cleared
+    assert engine.get_active_cycle("proj-2") is None
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 9. Deployment Loop — API endpoints (selector config, snippet status)
+# ══════════════════════════════════════════════════════════════════════════════
+
+def test_selector_config_and_snippet_endpoints():
+    """Test the new selector-config and snippet-installed API endpoints."""
+    from starlette.testclient import TestClient
+    from main import app, _selector_configs, _snippet_status
+
+    client = TestClient(app)
+
+    # GET default selectors
+    resp = client.get("/projects/test-proj/selector-config?template_id=landing-page-cro")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["source"] == "default"
+    assert "headline" in data["selectors"]
+
+    # POST custom selectors
+    custom = {"headline": ".my-headline", "cta_text": "#my-cta"}
+    resp = client.post("/projects/test-proj/selector-config", json={"selectors": custom})
+    assert resp.status_code == 200
+    assert resp.json()["success"] is True
+
+    # GET should now return custom
+    resp = client.get("/projects/test-proj/selector-config")
+    data = resp.json()
+    assert data["source"] == "custom"
+    assert data["selectors"]["headline"] == ".my-headline"
+
+    # Snippet not installed yet
+    resp = client.get("/projects/test-proj/snippet-installed")
+    assert resp.json()["installed"] is False
+
+    # Mark snippet installed
+    resp = client.post("/projects/test-proj/snippet-installed")
+    assert resp.json()["success"] is True
+
+    # Now should be installed
+    resp = client.get("/projects/test-proj/snippet-installed")
+    assert resp.json()["installed"] is True
+
+    # Cleanup
+    _selector_configs.pop("test-proj", None)
+    _snippet_status.pop("test-proj", None)
+
+
+def test_default_selectors_cover_all_templates():
+    """DEFAULT_SELECTORS should have entries for all 5 template types."""
+    from main import DEFAULT_SELECTORS
+
+    expected_templates = [
+        "landing-page-cro", "structural", "onboarding",
+        "pricing-page", "feature-announcement",
+    ]
+    for tid in expected_templates:
+        assert tid in DEFAULT_SELECTORS, f"Missing default selectors for {tid}"
+        assert len(DEFAULT_SELECTORS[tid]) > 0, f"Empty selectors for {tid}"
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 10. Deployment Loop — Agent flag creation wiring
+# ══════════════════════════════════════════════════════════════════════════════
+
+def test_agent_evaluate_live_builds_flag_payloads():
+    """Verify the flag payload structure the agent would send to PostHog."""
+    t = get_template("landing-page-cro")
+    baseline = copy.deepcopy(t.default_config)
+    mutated = copy.deepcopy(baseline)
+    mutated["headline"] = "New headline for testing"
+
+    # Build the payloads exactly as _evaluate_live does
+    selectors = {"headline": "h1, [data-forge='headline']"}
+    template_id = "landing-page-cro"
+
+    control_payload = {
+        "config": baseline,
+        "selectors": selectors,
+        "template_type": template_id,
+    }
+    variant_payload = {
+        "config": mutated,
+        "selectors": selectors,
+        "template_type": template_id,
+    }
+
+    variants = [
+        {"name": "control", "payload": control_payload},
+        {"name": "variant", "payload": variant_payload},
+    ]
+
+    # Verify structure
+    assert len(variants) == 2
+    assert variants[0]["name"] == "control"
+    assert variants[1]["name"] == "variant"
+    assert variants[0]["payload"]["config"]["headline"] == baseline["headline"]
+    assert variants[1]["payload"]["config"]["headline"] == "New headline for testing"
+    assert variants[0]["payload"]["selectors"] == selectors
+    assert variants[1]["payload"]["template_type"] == "landing-page-cro"

@@ -45,9 +45,9 @@ class Cycle:
     measured_metric: Optional[float] = None
     decision: Optional[str] = None
     
-    # Feature flag tracking (for structural templates)
-    flag_name: Optional[str] = None
-    flag_id: Optional[str] = None
+    # Feature flag tracking
+    flag_name: Optional[str] = None   # PostHog flag key (e.g. "forge-proj123")
+    flag_id: Optional[str] = None     # PostHog flag ID for updates/deletes
     control_payload: Optional[dict] = None
     variant_payload: Optional[dict] = None
     
@@ -149,6 +149,24 @@ class RatchetEngine:
         )
         self._active[project_id] = cycle
         self._deployment_events[project_id] = asyncio.Event()
+        return cycle
+
+    def update_cycle_flag_info(
+        self,
+        project_id: str,
+        flag_key: str,
+        flag_id: str,
+        control_payload: dict,
+        variant_payload: dict,
+    ) -> Optional[Cycle]:
+        """Attach PostHog feature flag metadata to the active cycle."""
+        cycle = self._active.get(project_id)
+        if not cycle:
+            return None
+        cycle.flag_name = flag_key
+        cycle.flag_id = flag_id
+        cycle.control_payload = control_payload
+        cycle.variant_payload = variant_payload
         return cycle
 
     def confirm_deployment(self, project_id: str) -> Optional[Cycle]:

@@ -499,11 +499,13 @@ class ForgeAgent(BaseForgeAgent):
 
         1. Convert mutated config to human-readable variant text.
         2. Register the cycle in the ratchet (shows variant in dashboard).
-        3. Broadcast variant_ready event to frontend.
-        4. Wait for user to confirm deployment.
-        5. Wait cycle_window_hours.
-        6. Query PostHog for current metric.
-        7. Compare to baseline, record decision.
+        3. Auto-create PostHog feature flag with control/variant payloads.
+        4. Broadcast variant_ready event to frontend.
+        5. If forge.js snippet is installed, auto-confirm deployment.
+           Otherwise wait for user to click "I've deployed this".
+        6. Wait cycle_window_hours.
+        7. Query PostHog for per-variant metrics.
+        8. Compare to baseline, record decision, deactivate flag.
         """
         from templates.base import EvaluationResult
         from connectors.posthog import PostHogConnector, MetricDefinition
@@ -512,6 +514,7 @@ class ForgeAgent(BaseForgeAgent):
 
         cfg = self.config
         project_id = getattr(cfg, 'project_id', '')
+        template_id = cfg.template_id
 
         # Convert config to readable variant text for the user to copy/deploy
         try:
@@ -530,23 +533,108 @@ class ForgeAgent(BaseForgeAgent):
             cycle_window_hours=cfg.cycle_window_hours,
         )
 
-        # Notify frontend: show the deploy panel
+        # ── Auto-create PostHog feature flag ──────────────────────────────
+        connector = None
+        flag_key = f"forge-{project_id}"
+        flag_created = False
+
+        if cfg.posthog_api_key and cfg.posthog_project_id:
+            connector = PostHogConnector(cfg.posthog_api_key, cfg.posthog_base_url)
+
+            # Load selector config for this project (stored by main.py endpoints)
+            try:
+                from main import _selector_configs, DEFAULT_SELECTORS
+                selectors = _selector_configs.get(project_id, DEFAULT_SELECTORS.get(template_id, {}))
+            except ImportError:
+                selectors = {}
+
+            control_payload = {
+                "config": best.config,
+                "selectors": selectors,
+                "template_type": template_id,
+            }
+            variant_payload = {
+                "config": mutated_config,
+                "selectors": selectors,
+                "template_type": template_id,
+            }
+            variants = [
+                {"name": "control", "payload": control_payload},
+                {"name": "variant", "payload": variant_payload},
+            ]
+
+            try:
+                # Reuse existing flag or create new one
+                existing = await connector.get_feature_flag_by_key(cfg.posthog_project_id, flag_key)
+                if existing:
+                    # Delete and recreate to update variants (PostHog PATCH doesn't support variant changes)
+                    await connector.delete_feature_flag(cfg.posthog_project_id, str(existing["id"]))
+                    print(f"[{self.agent_name}] Deleted old flag {flag_key}, recreating with new variant")
+
+                flag_result = await connector.create_feature_flag(
+                    project_id=cfg.posthog_project_id,
+                    name=f"Forge: {hypothesis.hypothesis[:60]}",
+                    key=flag_key,
+                    description=f"Auto-created by Forge agent {self.agent_name} for experiment {exp_id}",
+                    variants=variants,
+                    rollout_percentage=100,
+                )
+
+                if flag_result.get("success"):
+                    flag_created = True
+                    ratchet.update_cycle_flag_info(
+                        project_id=project_id,
+                        flag_key=flag_key,
+                        flag_id=str(flag_result["flag_id"]),
+                        control_payload=control_payload,
+                        variant_payload=variant_payload,
+                    )
+                    print(f"[{self.agent_name}] Feature flag '{flag_key}' created in PostHog")
+                else:
+                    print(f"[{self.agent_name}] Flag creation failed: {flag_result.get('error')}")
+            except Exception as e:
+                print(f"[{self.agent_name}] Flag creation error: {e}")
+
+        # Notify frontend: show the deploy panel (includes flag info if created)
         await broadcast_to_websockets({
             "type": "variant_ready",
             "project_id": project_id,
             "cycle": cycle.to_dict(),
-            "message": "Variant ready to deploy",
+            "flag_created": flag_created,
+            "flag_key": flag_key if flag_created else None,
+            "message": "Variant deployed via feature flag" if flag_created else "Variant ready to deploy",
         })
 
-        print(f"[{self.agent_name}] Waiting for user deployment confirmation...")
-        await self.update_status("running", "Waiting for deployment confirmation…")
+        # ── Deployment gate ───────────────────────────────────────────────
+        # If forge.js snippet is installed and flag was created, auto-confirm
+        snippet_installed = False
+        try:
+            from main import _snippet_status
+            snippet_installed = _snippet_status.get(project_id, False)
+        except ImportError:
+            pass
 
-        # Wait for user to click "I've deployed this"
-        deployed = await ratchet.wait_for_deployment(project_id, timeout_hours=72.0)
-        if not deployed:
-            print(f"[{self.agent_name}] Deployment confirmation timed out")
-            ratchet.clear(project_id)
-            return EvaluationResult(metric=best.metric, reasoning="Deployment confirmation timed out")
+        if flag_created and snippet_installed:
+            print(f"[{self.agent_name}] Snippet installed — auto-confirming deployment")
+            ratchet.confirm_deployment(project_id)
+        else:
+            if flag_created:
+                print(f"[{self.agent_name}] Flag created, waiting for snippet install or manual confirmation...")
+            else:
+                print(f"[{self.agent_name}] Waiting for user deployment confirmation...")
+            await self.update_status("running", "Waiting for deployment confirmation…")
+
+            deployed = await ratchet.wait_for_deployment(project_id, timeout_hours=72.0)
+            if not deployed:
+                print(f"[{self.agent_name}] Deployment confirmation timed out")
+                # Cleanup flag
+                if flag_created and connector:
+                    try:
+                        await connector.update_feature_flag(cfg.posthog_project_id, cycle.flag_id, active=False)
+                    except Exception:
+                        pass
+                ratchet.clear(project_id)
+                return EvaluationResult(metric=best.metric, reasoning="Deployment confirmation timed out")
 
         active_cycle = ratchet.get_active_cycle(project_id)
         if not active_cycle:
@@ -558,7 +646,7 @@ class ForgeAgent(BaseForgeAgent):
         await self.update_status("running", f"Measuring for {cfg.cycle_window_hours}h…")
         await asyncio.sleep(window_secs)
 
-        # Query PostHog
+        # ── Query PostHog for results ─────────────────────────────────────
         if not cfg.posthog_api_key or not cfg.posthog_project_id or not cfg.posthog_metric:
             print(f"[{self.agent_name}] Live mode: PostHog not configured — using simulation fallback")
             sim_result = self.template.evaluate(mutated_config, llm=self.llm)
@@ -570,32 +658,85 @@ class ForgeAgent(BaseForgeAgent):
             return sim_result
 
         try:
-            connector = PostHogConnector(cfg.posthog_api_key, cfg.posthog_base_url)
+            if not connector:
+                connector = PostHogConnector(cfg.posthog_api_key, cfg.posthog_base_url)
             metric_def = MetricDefinition.from_dict(cfg.posthog_metric)
-            result = await connector.get_current_metric(
-                cfg.posthog_project_id, metric_def, cfg.cycle_window_hours
-            )
-            is_improvement = result.value > best.metric
-            decision = "kept" if is_improvement else "reverted"
-            ratchet.record_result(project_id, result.value, decision)
+
+            # Use per-variant metrics when we have a flag, otherwise fall back to overall
+            if flag_created and active_cycle.flag_name:
+                flag_metrics = await connector.compute_flag_metrics(
+                    cfg.posthog_project_id,
+                    active_cycle.flag_name,
+                    metric_def,
+                    active_cycle.deployed_at or datetime.utcnow(),
+                    datetime.utcnow(),
+                )
+                control_data = flag_metrics.get("control", {})
+                variant_data = flag_metrics.get("variant", {})
+                measured_metric = variant_data.get("metric", 0)
+                control_metric = control_data.get("metric", 0)
+
+                # Update cycle with per-variant metrics
+                active_cycle.control_metric = control_metric
+                active_cycle.variant_metric = measured_metric
+                active_cycle.sample_size = (
+                    control_data.get("sample_size", 0) + variant_data.get("sample_size", 0)
+                )
+
+                is_improvement = flag_metrics.get("winner") == "variant"
+                decision = "kept" if is_improvement else "reverted"
+
+                reasoning = (
+                    f"PostHog A/B: control={control_metric:.4f} vs variant={measured_metric:.4f} "
+                    f"— {decision} (winner={flag_metrics.get('winner')}, "
+                    f"n={active_cycle.sample_size})"
+                )
+            else:
+                result = await connector.get_current_metric(
+                    cfg.posthog_project_id, metric_def, cfg.cycle_window_hours
+                )
+                measured_metric = result.value
+                is_improvement = result.value > best.metric
+                decision = "kept" if is_improvement else "reverted"
+                reasoning = (
+                    f"PostHog metric: {result.value:.4f} vs baseline {best.metric:.4f} "
+                    f"— {decision} (n={result.sample_size})"
+                )
+
+            ratchet.record_result(project_id, measured_metric, decision)
 
             await broadcast_to_websockets({
                 "type": "cycle_evaluated",
                 "project_id": project_id,
                 "cycle_id": cycle.cycle_id,
-                "metric": result.value,
+                "metric": measured_metric,
                 "baseline": best.metric,
                 "decision": decision,
+                "control_metric": active_cycle.control_metric,
+                "variant_metric": active_cycle.variant_metric,
+                "sample_size": active_cycle.sample_size,
             })
 
-            reasoning = (
-                f"PostHog metric: {result.value:.4f} vs baseline {best.metric:.4f} "
-                f"— {decision} (n={result.sample_size})"
-            )
-            return EvaluationResult(metric=result.value, reasoning=reasoning)
+            # Deactivate the feature flag after cycle completes
+            if flag_created and connector and cycle.flag_id:
+                try:
+                    await connector.update_feature_flag(
+                        cfg.posthog_project_id, cycle.flag_id, active=False
+                    )
+                    print(f"[{self.agent_name}] Flag '{flag_key}' deactivated")
+                except Exception as e:
+                    print(f"[{self.agent_name}] Failed to deactivate flag: {e}")
+
+            return EvaluationResult(metric=measured_metric, reasoning=reasoning)
 
         except Exception as e:
             print(f"[{self.agent_name}] PostHog live query error: {e}")
+            # Cleanup flag on error
+            if flag_created and connector and cycle.flag_id:
+                try:
+                    await connector.update_feature_flag(cfg.posthog_project_id, cycle.flag_id, active=False)
+                except Exception:
+                    pass
             ratchet.clear(project_id)
             return EvaluationResult(metric=best.metric, reasoning=f"PostHog error: {e}")
 

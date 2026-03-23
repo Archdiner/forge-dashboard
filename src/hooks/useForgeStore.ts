@@ -79,6 +79,12 @@ export interface ActiveCycle {
   measurement_ends_at: string | null;
   evaluated_at: string | null;
   seconds_remaining: number | null;
+  // Feature flag fields (populated when auto-deployed via PostHog)
+  flag_name: string | null;
+  flag_id: string | null;
+  control_metric: number | null;
+  variant_metric: number | null;
+  sample_size: number | null;
 }
 
 export interface CycleHistoryItem extends ActiveCycle {
@@ -97,43 +103,18 @@ export function useForgeStore(templateId: TemplateId = 'landing-page-cro', proje
   const [cycleHistory, setCycleHistory] = useState<CycleHistoryItem[]>([]);
   const wsRef = useRef<WebSocket | null>(null);
 
-  const connectWebSocket = useCallback(() => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) return;
+  // Keep projectId in a ref so the WS handler always sees the latest value
+  const projectIdRef = useRef(projectId);
+  projectIdRef.current = projectId;
 
-    const wsBase = API_BASE.replace(/^http/, 'ws');
-    const ws = new WebSocket(`${wsBase}/ws/dashboard`);
-    
-    ws.onopen = () => {
-      setIsConnected(true);
-      console.log('WebSocket connected');
-    };
+  const handleWebSocketMessage = useCallback((message: { type: string; data?: unknown }) => {
+    const pid = projectIdRef.current;
 
-    ws.onmessage = (event) => {
-      try {
-        const message = JSON.parse(event.data);
-        handleWebSocketMessage(message);
-      } catch (e) {
-        console.error('Failed to parse WebSocket message:', e);
-      }
-    };
-
-    ws.onclose = () => {
-      setIsConnected(false);
-      setTimeout(connectWebSocket, 3000);
-    };
-
-    ws.onerror = (error) => {
-      console.error('WebSocket error:', error);
-    };
-
-    wsRef.current = ws;
-  }, []);
-
-  const handleWebSocketMessage = (message: { type: string; data?: unknown }) => {
     switch (message.type) {
       case 'experiment_claimed':
       case 'experiment_completed': {
         const exp = message.data as Experiment;
+        if (pid && !exp.agent_id.startsWith(pid)) break;
         setExperiments(prev => {
           const exists = prev.find(e => e.id === exp.id);
           if (exists) {
@@ -149,8 +130,9 @@ export function useForgeStore(templateId: TemplateId = 'landing-page-cro', proje
       }
       case 'agent_status_updated': {
         const data = message.data as { agent_id: string; status: string; hypothesis: string | null };
-        setAgents(prev => prev.map(a => 
-          a.id === data.agent_id 
+        if (pid && !data.agent_id.startsWith(pid)) break;
+        setAgents(prev => prev.map(a =>
+          a.id === data.agent_id
             ? { ...a, status: data.status as Agent['status'], current_hypothesis: data.hypothesis }
             : a
         ));
@@ -158,7 +140,15 @@ export function useForgeStore(templateId: TemplateId = 'landing-page-cro', proje
       }
       case 'agent_registered': {
         const agent = message.data as Agent;
-        setAgents(prev => [...prev, agent]);
+        if (!pid || agent.id.startsWith(pid)) {
+          setAgents(prev => prev.find(a => a.id === agent.id) ? prev : [...prev, agent]);
+        }
+        break;
+      }
+      case 'agents_registered': {
+        const all = message.data as Agent[];
+        const mine = all.filter(a => !pid || a.id.startsWith(pid));
+        setAgents(mine);
         break;
       }
       case 'checkpoint': {
@@ -188,18 +178,56 @@ export function useForgeStore(templateId: TemplateId = 'landing-page-cro', proje
         break;
       }
       case 'cycle_evaluated': {
-        const data = message as unknown as { metric: number; decision: 'kept' | 'reverted' };
+        const data = message as unknown as {
+          metric: number;
+          decision: 'kept' | 'reverted';
+          control_metric?: number | null;
+          variant_metric?: number | null;
+          sample_size?: number | null;
+        };
         setActiveCycle(prev => {
           if (!prev) return null;
-          const completed = { ...prev, state: 'evaluated' as const, measured_metric: data.metric, decision: data.decision };
+          const completed = {
+            ...prev,
+            state: 'evaluated' as const,
+            measured_metric: data.metric,
+            decision: data.decision,
+            control_metric: data.control_metric ?? prev.control_metric,
+            variant_metric: data.variant_metric ?? prev.variant_metric,
+            sample_size: data.sample_size ?? prev.sample_size,
+          };
           setCycleHistory(h => [...h, completed as CycleHistoryItem]);
-          return null; // clear active cycle after evaluation
+          return null;
         });
         break;
       }
     }
-  };
+  }, []); // stable — reads projectId from ref
 
+  // Connect WebSocket once; reconnect on disconnect
+  useEffect(() => {
+    const wsBase = API_BASE.replace(/^http/, 'ws');
+    const ws = new WebSocket(`${wsBase}/ws/dashboard`);
+
+    ws.onopen = () => {
+      setIsConnected(true);
+      console.log('WebSocket connected');
+    };
+    ws.onmessage = (event) => {
+      try {
+        handleWebSocketMessage(JSON.parse(event.data));
+      } catch (e) {
+        console.error('Failed to parse WS message:', e);
+      }
+    };
+    ws.onclose = () => setIsConnected(false);
+    ws.onerror = (err) => console.error('WebSocket error:', err);
+
+    wsRef.current = ws;
+    return () => { ws.close(); wsRef.current = null; };
+  }, [handleWebSocketMessage]);
+
+  // Poll REST endpoints every 3s
   const fetchInitialData = useCallback(async () => {
     setIsLoading(true);
     try {
@@ -216,17 +244,13 @@ export function useForgeStore(templateId: TemplateId = 'landing-page-cro', proje
       const agentsData = await agentsRes.json();
       const best = await bestRes.json();
 
-      // Only use real data - no mock fallback
-      if (history && history.length > 0) {
-        setExperiments(history);
-      } else {
-        setExperiments([]);
-      }
-      if (agentsData && agentsData.length > 0) {
-        setAgents(agentsData);
-      } else {
-        setAgents([]);
-      }
+      setExperiments(history && history.length > 0 ? history : []);
+
+      const filteredAgents = projectId
+        ? (agentsData || []).filter((a: { id: string }) => a.id.startsWith(projectId))
+        : (agentsData || []);
+      setAgents(filteredAgents);
+
       if (best && !best.error) {
         setGlobalBest(best);
       } else {
@@ -234,7 +258,6 @@ export function useForgeStore(templateId: TemplateId = 'landing-page-cro', proje
       }
     } catch (e) {
       console.error('Failed to fetch initial data:', e);
-      // Don't use mock data - show empty state
       setExperiments([]);
       setAgents([]);
       setGlobalBest(null);
@@ -249,16 +272,10 @@ export function useForgeStore(templateId: TemplateId = 'landing-page-cro', proje
     setGlobalBest(null);
     setAgents([]);
     fetchInitialData();
-    connectWebSocket();
 
-    // Poll for updates every 3 seconds
     const interval = setInterval(fetchInitialData, 3000);
-
-    return () => {
-      wsRef.current?.close();
-      clearInterval(interval);
-    };
-  }, [fetchInitialData, connectWebSocket]);
+    return () => clearInterval(interval);
+  }, [fetchInitialData]);
 
   const switchTemplate = useCallback((newTemplateId: TemplateId) => {
     setCurrentTemplate(newTemplateId);
@@ -292,28 +309,22 @@ export function useForgeStore(templateId: TemplateId = 'landing-page-cro', proje
     }
   }, [currentTemplate]);
 
-  const optimizationCurve = experiments.length > 0
-    ? experiments
-        .filter(e => e.status === 'success' || e.status === 'failure')
-        .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
-        .map((e, i) => ({
-          experiment: i + 1,
-          metric: e.status === 'success' ? e.metric_after : e.metric_before,
-        }))
-    : [];
+  // Build optimization curve from completed experiments
+  const completedExps = experiments
+    .filter(e => e.status === 'success' || e.status === 'failure')
+    .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
 
-  if (optimizationCurve.length > 0) {
-    // Seed the running best from the actual global best baseline (or first observed metric)
-    let runningBest = globalBest?.metric ?? optimizationCurve[0]?.metric ?? 0;
-    optimizationCurve.forEach(point => {
-      if (point.metric > runningBest) runningBest = point.metric;
-      point.metric = runningBest;
-    });
+  const optimizationCurve: { experiment: number; metric: number }[] = [];
+  if (completedExps.length > 0) {
+    let runningBest = completedExps[0].metric_before;
+    for (let i = 0; i < completedExps.length; i++) {
+      const e = completedExps[i];
+      const metric = e.status === 'success' ? e.metric_after : e.metric_before;
+      if (metric > runningBest) runningBest = metric;
+      optimizationCurve.push({ experiment: i + 1, metric: runningBest });
+    }
   }
 
-  // ~1 LLM call per experiment (hypothesis generation only; evaluation is free local compute)
-  // Gemini Flash 2.0: ~$0.075/1M input tokens, ~700 tokens/call → ~$0.00005/experiment
-  // Round up to $0.0001 to account for output tokens
   const costPerExperiment = 0.0001;
 
   return {

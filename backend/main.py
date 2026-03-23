@@ -2,7 +2,8 @@ import asyncio
 import json
 import uuid
 from datetime import datetime
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Dict, List, Optional, Set
 
@@ -265,8 +266,14 @@ async def get_shareable_results(template_id: str):
 
 
 @app.post("/projects")
-async def create_project(name: str, template_id: str, description: str = ""):
-    """Create a new project."""
+async def create_project(request: Request):
+    """Create a new project. Accepts JSON body or query params."""
+    body = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+    name = body.get("name") or request.query_params.get("name", "")
+    template_id = body.get("template_id") or request.query_params.get("template_id", "landing-page-cro")
+    description = body.get("description") or request.query_params.get("description", "")
+    if not name:
+        return JSONResponse({"error": "name is required"}, status_code=422)
     from models import Project
     project = Project(
         id=f"proj-{uuid.uuid4().hex[:8]}",
@@ -277,7 +284,7 @@ async def create_project(name: str, template_id: str, description: str = ""):
         updated_at=datetime.now()
     )
     store.projects[project.id] = project
-    return {"success": True, "project": project.model_dump()}
+    return project.model_dump()
 
 
 @app.get("/projects")
@@ -456,6 +463,105 @@ async def get_evaluator(evaluator_id: str):
 _running_project_tasks: Dict[str, List[asyncio.Task]] = {}
 
 
+async def _run_demo_task(project_id: str, template_id: str):
+    """Plays back a pre-scripted demo sequence with 3 virtual agents."""
+    from demo_sequence import DEMO_SEQUENCES
+    _, DEMO_STEPS = DEMO_SEQUENCES.get(template_id, (None, []))
+    if not DEMO_STEPS:
+        return
+    from models import ExperimentStatus, AgentStatus
+    import uuid as _uuid
+
+    agent_roles = [
+        (f"{project_id}-agent-1", "Explorer Agent"),
+        (f"{project_id}-agent-2", "Refiner Agent"),
+        (f"{project_id}-agent-3", "Synthesizer Agent"),
+    ]
+
+    # Register 3 agents
+    for aid, aname in agent_roles:
+        store.agents[aid] = Agent(id=aid, name=aname, status=AgentStatus.IDLE, last_active=datetime.now())
+    await broadcast_to_websockets({"type": "agents_registered", "data": [
+        {"id": aid, "name": aname, "status": "idle"} for aid, aname in agent_roles
+    ]})
+
+    template = get_template(template_id)
+    current_config = store.global_best[template_id].config.copy()
+
+    await asyncio.sleep(1.5)
+
+    for step_idx, step in enumerate(DEMO_STEPS):
+        agent_id, agent_name = agent_roles[step_idx % 3]
+
+        # Agent starts thinking
+        store.agents[agent_id].status = AgentStatus.THINKING
+        store.agents[agent_id].current_hypothesis = step["hypothesis"]
+        store.agents[agent_id].last_active = datetime.now()
+        await broadcast_to_websockets({"type": "agent_status_updated", "data": {
+            "agent_id": agent_id, "status": "thinking", "hypothesis": step["hypothesis"]
+        }})
+        await asyncio.sleep(2.5)
+
+        # Claim experiment
+        exp_id = f"exp-{_uuid.uuid4().hex[:8]}"
+        metric_before = store.global_best[template_id].metric
+        new_config = template.apply_mutation(current_config, step["mutation"])
+        metric_after = template.evaluate(new_config).metric
+
+        exp = Experiment(
+            id=exp_id,
+            agent_id=agent_id,
+            agent_name=agent_name,
+            template_id=template_id,
+            hypothesis=step["hypothesis"],
+            mutation=str(step["mutation"]),
+            metric_before=metric_before,
+            metric_after=metric_after,
+            status=ExperimentStatus.RUNNING,
+            reasoning=step["reasoning"],
+            created_at=datetime.now(),
+        )
+        store.experiments[exp_id] = exp
+
+        store.agents[agent_id].status = AgentStatus.RUNNING
+        store.agents[agent_id].current_hypothesis = f"Testing: {step['field_changed']}"
+        await broadcast_to_websockets({"type": "agent_status_updated", "data": {
+            "agent_id": agent_id, "status": "running", "hypothesis": f"Testing: change {step['field_changed']}"
+        }})
+        await asyncio.sleep(1.5)
+
+        # Publish result
+        exp.status = ExperimentStatus.SUCCESS
+        exp.completed_at = datetime.now()
+        current_config = new_config
+        store.global_best[template_id].metric = metric_after
+        store.global_best[template_id].config = current_config.copy()
+        store.global_best[template_id].experiment_count += 1
+        store.global_best[template_id].last_updated = datetime.now()
+
+        store.agents[agent_id].status = AgentStatus.IDLE
+        store.agents[agent_id].current_hypothesis = None
+        store.agents[agent_id].experiments_run += 1
+        store.agents[agent_id].improvements_found += 1
+
+        await broadcast_to_websockets({"type": "experiment_completed", "data": exp.model_dump(mode='json')})
+        await broadcast_to_websockets({"type": "global_best_updated", "data": store.global_best[template_id].model_dump(mode='json')})
+        await broadcast_to_websockets({"type": "agent_status_updated", "data": {
+            "agent_id": agent_id, "status": "idle", "hypothesis": None
+        }})
+
+        await asyncio.sleep(1.5)
+
+    # Done
+    for aid, _ in agent_roles:
+        store.agents[aid].status = AgentStatus.IDLE
+    await broadcast_to_websockets({"type": "demo_complete", "data": {
+        "project_id": project_id,
+        "final_metric": store.global_best[template_id].metric,
+        "experiments_run": len(DEMO_STEPS),
+    }})
+
+
 async def _run_agent_task(
     project_id: str,
     template_id: str,
@@ -509,9 +615,9 @@ async def start_project_agents(project_id: str, body: dict = {}):
 
     Body (all optional):
       {
-        "agent_count": 3,                  // 1, 2, or 3
-        "roles": ["explorer", "refiner", "synthesizer"],
-        "template_id": "dcf-model"         // overrides project template
+        "agent_count": 3,
+        "template_id": "landing-page-cro",
+        "demo_mode": true   // runs scripted sequence instead of LLM
       }
     """
     # Cancel any already-running agents for this project
@@ -520,42 +626,63 @@ async def start_project_agents(project_id: str, body: dict = {}):
         if not task.done():
             task.cancel()
 
-    # Reset experiments for this project before starting fresh
+    # Reset experiments and agents for this project before starting fresh
     to_delete = [eid for eid, exp in store.experiments.items() if exp.agent_id and exp.agent_id.startswith(project_id)]
     for eid in to_delete:
         del store.experiments[eid]
+    # Also clear stale agents for this project
+    stale_agents = [aid for aid in store.agents if aid.startswith(project_id)]
+    for aid in stale_agents:
+        del store.agents[aid]
 
-    # Reset global best to default for this template
     project = store.projects.get(project_id)
     template_id = body.get("template_id") or (project.template_id if project else "landing-page-cro")
-    if template_id in store.global_best:
-        template = get_template(template_id)
-        store.global_best[template_id] = GlobalBest(
-            template_id=template_id,
-            metric=template.get_default_metric(),
-            config=template.default_config.copy(),
-            experiment_count=0,
-            last_updated=datetime.now()
-        )
+    demo_mode = body.get("demo_mode", False)
 
-    agent_count = int(body.get("agent_count", 1))
+    # Reset global best — use deliberately bad config in demo mode
+    from demo_sequence import DEMO_SEQUENCES
+    template = get_template(template_id)
+    if demo_mode and template_id in DEMO_SEQUENCES:
+        init_config, _ = DEMO_SEQUENCES[template_id]
+        init_config = init_config.copy()
+        init_metric = template.evaluate(init_config).metric
+    else:
+        init_config = template.default_config.copy()
+        init_metric = template.get_default_metric()
+
+    store.global_best[template_id] = GlobalBest(
+        template_id=template_id,
+        metric=init_metric,
+        config=init_config,
+        experiment_count=0,
+        last_updated=datetime.now()
+    )
+
+    agent_count = int(body.get("agent_count", 3))
     roles_order = ["explorer", "refiner", "synthesizer"]
     roles = body.get("roles", roles_order[:agent_count])
     max_experiments = int(body.get("max_experiments", 50))
-    checkpoint_every = int(body.get("checkpoint_every", 10))
+    checkpoint_every = int(body.get("checkpoint_every", 0))
     experiment_mode = body.get("experiment_mode", "simulation")
 
     tasks = []
-    for i, role in enumerate(roles[:agent_count]):
+    if demo_mode and template_id in DEMO_SEQUENCES:
         task = asyncio.create_task(
-            _run_agent_task(
-                project_id, template_id, role, i + 1,
-                max_experiments=max_experiments,
-                checkpoint_every=checkpoint_every,
-                experiment_mode=experiment_mode,
-            )
+            _run_demo_task(project_id, template_id)
         )
         tasks.append(task)
+        agent_count = 3  # show 3 agents visually
+    else:
+        for i, role in enumerate(roles[:agent_count]):
+            task = asyncio.create_task(
+                _run_agent_task(
+                    project_id, template_id, role, i + 1,
+                    max_experiments=max_experiments,
+                    checkpoint_every=checkpoint_every,
+                    experiment_mode=experiment_mode,
+                )
+            )
+            tasks.append(task)
 
     _running_project_tasks[project_id] = tasks
 
@@ -756,6 +883,50 @@ async def export_project(project_id: str, format: str = "json"):
 
 # In-memory PostHog configs per project (production: store in Supabase)
 _posthog_configs: Dict[str, dict] = {}
+
+# Selector configs per project — maps template fields to CSS selectors
+_selector_configs: Dict[str, dict] = {}
+
+# Snippet installation status per project — set by forge.js heartbeat
+_snippet_status: Dict[str, bool] = {}
+
+# Default CSS selectors per template type
+DEFAULT_SELECTORS: Dict[str, dict] = {
+    "landing-page-cro": {
+        "headline": "h1, [data-forge='headline']",
+        "subheadline": "h2, [data-forge='subheadline']",
+        "cta_text": ".cta-button, button[data-forge='cta'], [data-forge='cta_text']",
+        "value_props": "ul.value-props, [data-forge='value_props']",
+        "social_proof": ".social-proof, [data-forge='social_proof']",
+    },
+    "structural": {
+        "sections_order": "[data-forge-section]",
+        "hero_style": ".hero, [data-forge='hero']",
+        "cta_style": ".cta, [data-forge='cta']",
+        "show_pricing": "[data-forge-id='pricing']",
+        "show_testimonials": "[data-forge-id='testimonials']",
+        "show_comparison": "[data-forge-id='comparison']",
+    },
+    "onboarding": {
+        "steps_order": "[data-forge-step]",
+        "show_progress_bar": ".progress-bar, [data-forge='progress_bar']",
+        "show_skip_option": ".skip-button, [data-forge='skip']",
+    },
+    "pricing-page": {
+        "plans_order": "[data-forge-plan]",
+        "highlighted_plan": "[data-forge-plan]",
+        "cta_text": "[data-forge='cta_text']",
+        "show_comparison": ".comparison-table, [data-forge='comparison']",
+        "show_annual": "[data-forge='annual_toggle']",
+    },
+    "feature-announcement": {
+        "feature_position": "[data-forge='feature']",
+        "badge_text": ".badge, [data-forge='badge']",
+        "tooltip_content": ".tooltip, [data-forge='tooltip']",
+        "show_badge": ".badge, [data-forge='badge']",
+        "show_tooltip": ".tooltip, [data-forge='tooltip']",
+    },
+}
 
 
 @app.post("/connectors/posthog/verify")
@@ -1076,6 +1247,48 @@ async def get_flag_metrics(
         return result
     except Exception as e:
         return {"error": str(e)}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# FORGE.JS SNIPPET & SELECTOR CONFIG ENDPOINTS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+@app.post("/projects/{project_id}/selector-config")
+async def set_selector_config(project_id: str, body: dict):
+    """Store CSS selector mapping for a project.
+
+    Body: {"selectors": {"headline": "h1, [data-forge='headline']", ...}}
+    """
+    selectors = body.get("selectors", {})
+    if not selectors:
+        return {"error": "selectors dict required"}
+    _selector_configs[project_id] = selectors
+    return {"success": True}
+
+
+@app.get("/projects/{project_id}/selector-config")
+async def get_selector_config(project_id: str, template_id: str = "landing-page-cro"):
+    """Get CSS selector mapping for a project, with defaults."""
+    custom = _selector_configs.get(project_id)
+    if custom:
+        return {"selectors": custom, "source": "custom"}
+    defaults = DEFAULT_SELECTORS.get(template_id, {})
+    return {"selectors": defaults, "source": "default"}
+
+
+@app.post("/projects/{project_id}/snippet-installed")
+async def mark_snippet_installed(project_id: str):
+    """Called by forge.js on load to confirm the snippet is active on the user's site."""
+    _snippet_status[project_id] = True
+    return {"success": True}
+
+
+@app.get("/projects/{project_id}/snippet-installed")
+async def check_snippet_installed(project_id: str):
+    """Check whether forge.js has reported in for this project."""
+    installed = _snippet_status.get(project_id, False)
+    return {"installed": installed}
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

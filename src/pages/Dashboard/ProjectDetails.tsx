@@ -1,5 +1,6 @@
 import { useParams, useSearchParams } from 'react-router-dom';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
+import { SitePreview } from '../../components/SitePreview';
 import {
   Area,
   AreaChart,
@@ -27,7 +28,7 @@ const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
 const TEMPLATE_BASELINES: Record<string, number> = {
   'landing-page-cro':     0.0346,
   'structural':           0.0372,
-  'onboarding':           0.573,
+  'onboarding':           0.495,
   'pricing-page':         0.0430,
   'feature-announcement': 0.190,
 };
@@ -71,12 +72,15 @@ function fmtDiff(diff: number, templateId: string): string {
 }
 
 const TEMPLATE_SUBJECT: Record<string, string> = {
-  'landing-page-cro': 'landing page',
-  'email-outreach': 'cold email',
+  'landing-page-cro':     'landing page',
+  'structural':           'page structure',
+  'onboarding':           'onboarding flow',
+  'pricing-page':         'pricing page',
+  'feature-announcement': 'feature rollout',
+  'email-outreach':       'cold email',
   'portfolio-optimization': 'portfolio',
-  'dcf-model': 'DCF model',
-  'prompt-optimization': 'prompt',
-  'structural': 'structural config',
+  'dcf-model':            'DCF model',
+  'prompt-optimization':  'prompt',
 };
 
 // ─── Deployment Panel ────────────────────────────────────────────────────────
@@ -91,12 +95,23 @@ function DeploymentPanel({
   onDeployed: () => void;
 }) {
   const [copied, setCopied] = useState(false);
+  const [snippetCopied, setSnippetCopied] = useState(false);
   const [confirming, setConfirming] = useState(false);
+
+  const hasFlag = !!cycle.flag_name;
+  const apiBase = API_BASE;
+  const snippetTag = `<script src="${apiBase}/forge.js" data-project="${projectId}" data-api="${apiBase}"></script>`;
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(cycle.variant_text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleCopySnippet = async () => {
+    await navigator.clipboard.writeText(snippetTag);
+    setSnippetCopied(true);
+    setTimeout(() => setSnippetCopied(false), 2000);
   };
 
   const handleConfirm = async () => {
@@ -124,9 +139,9 @@ function DeploymentPanel({
       marginBottom: 24,
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-        <div style={{ width: 10, height: 10, borderRadius: '50%', background: copper, animation: 'pulse 2s infinite' }} />
-        <div style={{ fontFamily: mono, fontSize: 11, fontWeight: 600, color: copper, textTransform: 'uppercase', letterSpacing: 1 }}>
-          Variant Ready to Deploy
+        <div style={{ width: 10, height: 10, borderRadius: '50%', background: hasFlag ? green : copper, animation: 'pulse 2s infinite' }} />
+        <div style={{ fontFamily: mono, fontSize: 11, fontWeight: 600, color: hasFlag ? green : copper, textTransform: 'uppercase', letterSpacing: 1 }}>
+          {hasFlag ? 'Feature Flag Live in PostHog' : 'Variant Ready to Deploy'}
         </div>
       </div>
 
@@ -134,7 +149,44 @@ function DeploymentPanel({
         {cycle.hypothesis}
       </p>
 
-      {/* Variant text box */}
+      {/* Auto-deployed via feature flag */}
+      {hasFlag && (
+        <div style={{
+          background: '#FFF',
+          border: '1px solid rgba(16,185,129,0.2)',
+          borderRadius: 8,
+          padding: 16,
+          marginBottom: 16,
+        }}>
+          <div style={{ fontFamily: mono, fontSize: 11, color: green, fontWeight: 600, marginBottom: 8 }}>
+            Flag: {cycle.flag_name}
+          </div>
+          <p style={{ fontSize: 12, color: inkMuted, lineHeight: 1.6, marginBottom: 12 }}>
+            Forge created a PostHog feature flag with your variant. Add forge.js to your site
+            to automatically apply changes — or deploy manually.
+          </p>
+          <div style={{
+            background: 'rgba(26,22,20,0.04)',
+            border: '1px solid rgba(26,22,20,0.08)',
+            borderRadius: 6,
+            padding: 12,
+            fontFamily: mono,
+            fontSize: 11,
+            lineHeight: 1.6,
+            color: ink,
+            wordBreak: 'break-all',
+            marginBottom: 10,
+          }}>
+            {snippetTag}
+          </div>
+          <button onClick={handleCopySnippet}
+            style={{ padding: '6px 14px', fontSize: 11, fontFamily: font, background: snippetCopied ? green : 'rgba(16,185,129,0.1)', color: snippetCopied ? '#FFF' : green, border: `1px solid ${snippetCopied ? green : 'rgba(16,185,129,0.2)'}`, borderRadius: 6, cursor: 'pointer', transition: 'all 0.2s' }}>
+            {snippetCopied ? '✓ Copied!' : 'Copy snippet'}
+          </button>
+        </div>
+      )}
+
+      {/* Manual variant text box (always shown as fallback) */}
       <div style={{
         background: '#FFF',
         border: '1px solid rgba(196,122,42,0.2)',
@@ -146,16 +198,16 @@ function DeploymentPanel({
         lineHeight: 1.7,
         color: ink,
         whiteSpace: 'pre-wrap',
-        maxHeight: 220,
+        maxHeight: 160,
         overflowY: 'auto',
       }}>
         {cycle.variant_text}
       </div>
 
-      <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
         <button onClick={handleCopy}
           style={{ padding: '8px 18px', fontSize: 12, fontFamily: font, background: copied ? green : 'rgba(196,122,42,0.1)', color: copied ? '#FFF' : copper, border: `1px solid ${copied ? green : 'rgba(196,122,42,0.2)'}`, borderRadius: 7, cursor: 'pointer', transition: 'all 0.2s' }}>
-          {copied ? '✓ Copied!' : 'Copy to clipboard'}
+          {copied ? '✓ Copied!' : 'Copy variant'}
         </button>
 
         <button onClick={handleConfirm} disabled={confirming}
@@ -164,7 +216,9 @@ function DeploymentPanel({
         </button>
 
         <span style={{ fontSize: 11, color: inkMuted, marginLeft: 4 }}>
-          Forge will start measuring after you click
+          {hasFlag
+            ? 'Click once forge.js is on your site, or after manual deployment'
+            : 'Forge will start measuring after you click'}
         </span>
       </div>
     </div>
@@ -223,7 +277,7 @@ function MeasurementTimer({ cycle, projectId }: { cycle: ActiveCycle; projectId:
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 32, marginBottom: 16, alignItems: 'flex-end' }}>
+      <div style={{ display: 'flex', gap: 32, marginBottom: 16, alignItems: 'flex-end', flexWrap: 'wrap' }}>
         <div>
           <div style={{ fontFamily: mono, fontSize: 36, fontWeight: 600, color: ink, letterSpacing: -1 }}>
             {String(hours).padStart(2, '0')}:{String(minutes).padStart(2, '0')}:{String(secs).padStart(2, '0')}
@@ -233,7 +287,47 @@ function MeasurementTimer({ cycle, projectId }: { cycle: ActiveCycle; projectId:
           </div>
         </div>
 
-        {liveMetric !== null && (
+        {/* Per-variant metrics (when A/B flag is active) */}
+        {cycle.control_metric != null && cycle.variant_metric != null ? (
+          <>
+            <div>
+              <div style={{ fontFamily: mono, fontSize: 22, fontWeight: 500, color: inkMuted }}>
+                {cycle.control_metric.toFixed(4)}
+              </div>
+              <div style={{ fontSize: 11, color: inkMuted, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                Control
+              </div>
+            </div>
+            <div>
+              <div style={{ fontFamily: mono, fontSize: 22, fontWeight: 500, color: copper }}>
+                {cycle.variant_metric.toFixed(4)}
+              </div>
+              <div style={{ fontSize: 11, color: inkMuted, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                Variant
+              </div>
+            </div>
+            {cycle.variant_metric > cycle.control_metric && (
+              <div>
+                <div style={{ fontFamily: mono, fontSize: 22, fontWeight: 600, color: green }}>
+                  +{((cycle.variant_metric - cycle.control_metric) / Math.max(cycle.control_metric, 0.0001) * 100).toFixed(1)}%
+                </div>
+                <div style={{ fontSize: 11, color: inkMuted, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                  Lift
+                </div>
+              </div>
+            )}
+            {cycle.sample_size != null && (
+              <div>
+                <div style={{ fontFamily: mono, fontSize: 22, fontWeight: 500, color: ink }}>
+                  {cycle.sample_size.toLocaleString()}
+                </div>
+                <div style={{ fontSize: 11, color: inkMuted, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                  Visitors
+                </div>
+              </div>
+            )}
+          </>
+        ) : liveMetric !== null ? (
           <div>
             <div style={{ fontFamily: mono, fontSize: 28, fontWeight: 500, color: copper }}>
               {liveMetric.toFixed(4)}
@@ -242,7 +336,7 @@ function MeasurementTimer({ cycle, projectId }: { cycle: ActiveCycle; projectId:
               Live metric
             </div>
           </div>
-        )}
+        ) : null}
       </div>
 
       {/* Progress bar */}
@@ -690,6 +784,23 @@ export default function ProjectDetails() {
   const templateId = (projectData?.template_id || 'landing-page-cro') as TemplateId;
   const store = useForgeStore(templateId, id);
   const [isRunning, setIsRunning] = useState(false);
+  const [changedField, setChangedField] = useState<string | null>(null);
+  const prevConfigRef = useRef<Record<string, unknown> | null>(null);
+
+  // Detect which field changed in globalBest.config and flash it in the preview
+  useEffect(() => {
+    const cfg = store.globalBest?.config as Record<string, unknown> | undefined;
+    if (!cfg) return;
+    const prev = prevConfigRef.current;
+    if (prev) {
+      const changed = Object.keys(cfg).find(k => JSON.stringify(cfg[k]) !== JSON.stringify(prev[k]));
+      if (changed) {
+        setChangedField(changed);
+        setTimeout(() => setChangedField(null), 2000);
+      }
+    }
+    prevConfigRef.current = cfg;
+  }, [store.globalBest?.config]);
 
   const handleStop = async () => {
     if (!id) return;
@@ -700,10 +811,15 @@ export default function ProjectDetails() {
   const handleStart = async () => {
     if (!id) return;
     setIsRunning(true);
+    prevConfigRef.current = null;
     await fetch(`${API_BASE}/projects/${id}/start`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ template_id: templateId, agent_count: 1 }),
+      body: JSON.stringify({
+        template_id: templateId,
+        agent_count: 3,
+        demo_mode: true,
+      }),
     });
   };
 
@@ -772,7 +888,7 @@ export default function ProjectDetails() {
             </button>
           ) : !isLiveMode && (
             <button onClick={handleStart} style={{ padding: '7px 14px', fontSize: 12, background: copper, color: '#FFF', border: 'none', borderRadius: 6, cursor: 'pointer' }}>
-              {store.experimentCount > 0 ? 'Continue' : 'Start'}
+              {store.experimentCount > 0 ? 'Restart' : 'Start'}
             </button>
           )}
         </div>
@@ -852,6 +968,16 @@ export default function ProjectDetails() {
             templateId={templateId}
             successCount={store.experiments.filter(e => e.status === 'success').length}
           />
+
+          {templateId === 'landing-page-cro' && (
+            <div style={{ marginBottom: 32 }}>
+              <SitePreview
+                config={(store.globalBest?.config ?? null) as any}
+                isRunning={isRunning}
+                changedField={changedField}
+              />
+            </div>
+          )}
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: 40 }}>
             <div>
